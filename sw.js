@@ -1,7 +1,7 @@
 /* Service worker : cache-first.
    Après toute modification d'un fichier de l'appli, incrémenter CACHE_VERSION
    pour que les téléphones récupèrent la nouvelle version, et APP_VERSION dans index.html. */
-const CACHE_VERSION='1.10.0';
+const CACHE_VERSION='1.10.1';
 const CACHE='suivi-solaire-'+CACHE_VERSION;
 const FONT_CACHE='suivi-solaire-fonts';
 const ASSETS=['./','index.html','store.js','sync.js','model.js','seed.json','manifest.webmanifest',
@@ -9,7 +9,9 @@ const ASSETS=['./','index.html','store.js','sync.js','model.js','seed.json','man
 const FONT_HOSTS=['fonts.googleapis.com','fonts.gstatic.com'];
 
 self.addEventListener('install',e=>{
-  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
+  /* cache:'reload' : toujours prendre les fichiers sur le serveur, jamais dans le cache HTTP
+     du navigateur (sinon une nouvelle version peut s'installer avec l'ancien index.html) */
+  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS.map(u=>new Request(u,{cache:'reload'})))));
 });
 
 /* la nouvelle version attend ; la page l'active quand on touche « Mettre à jour » */
