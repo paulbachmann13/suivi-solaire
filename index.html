@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Suivi solaire</title>
+<meta name="description" content="Production, consommation, projection sur 20 ans et rentabilité de l'installation solaire.">
+<meta name="theme-color" content="#f3f5f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1216" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Solaire">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Hanken+Grotesk:wght@400;500;600&display=swap">
+<script src="vendor/chart.umd.min.js"></script>
+<script src="store.js"></script>
+<script src="model.js"></script>
+<style>
+/* Concept : tableau de bord d'installation, une colonne, barre d'onglets en bas.
+   Palette : neutres bleutés, séries issues de la palette validée (bleu, orange, aqua). */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --ink:#10161d; --ink2:#46515d; --muted:#66717e;
+  --hair:#dfe4ea; --soft:#eaeef3; --accent:#1f3a5f; --accent-ink:#ffffff;
+  --c-conso:#2a78d6; --c-prod:#eb6834; --c-solar:#1baf7a;
+  --good:#006300; --warn-bg:#fff3d6; --warn-ink:#6b4a00; --bad:#b3261e;
+  --f-display:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-body:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1216; --surface:#161b21; --ink:#eef1f4; --ink2:#b4bdc7; --muted:#8d98a4;
+  --hair:#262d35; --soft:#1e252d; --accent:#8fb4ee; --accent-ink:#0e1216;
+  --c-conso:#3987e5; --c-prod:#d95926; --c-solar:#199e70;
+  --good:#0ca30c; --warn-bg:#3a2d0c; --warn-ink:#f2d58a; --bad:#ff8a80; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1216; --surface:#161b21; --ink:#eef1f4; --ink2:#b4bdc7; --muted:#8d98a4;
+  --hair:#262d35; --soft:#1e252d; --accent:#8fb4ee; --accent-ink:#0e1216;
+  --c-conso:#3987e5; --c-prod:#d95926; --c-solar:#199e70;
+  --good:#0ca30c; --warn-bg:#3a2d0c; --warn-ink:#f2d58a; --bad:#ff8a80; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;margin:0;
+  padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));
+  padding-block:calc(20px + env(safe-area-inset-top,0px)) calc(96px + env(safe-area-inset-bottom,0px));
+  -webkit-text-size-adjust:100%}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:26px;font-weight:700}
+h2{font-size:19px;font-weight:700}
+h3{font-size:15px;font-weight:500}
+p{margin:0}
+#app{max-width:640px;margin-inline:auto;display:flex;flex-direction:column;gap:16px;min-width:0}
+.head{display:flex;flex-direction:column;gap:2px}
+.sub{color:var(--ink2);font-size:13px}
+.muted{color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--hair);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card.flat{border:0;background:transparent;padding:0}
+.label{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.big{font-family:var(--f-display);font-weight:700;font-size:48px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.mid{font-family:var(--f-display);font-weight:700;font-size:22px;line-height:1.1;font-variant-numeric:tabular-nums}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.tile{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.tile .unit{font-size:13px;color:var(--ink2);font-weight:500}
+.tile .hint{font-size:12px;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--ink2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.chartbox{position:relative;height:220px;min-width:0}
+.chartbox.tall{height:260px}
+.seg{display:flex;background:var(--soft);border-radius:10px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;color:var(--ink2);font:inherit;font-weight:600;font-size:14px;padding:9px 10px;border-radius:8px;min-height:40px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.row2{display:flex;gap:10px;flex-wrap:wrap}
+.row2>*{flex:1 1 140px;min-width:0}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{border:1px solid var(--hair);background:var(--surface);color:var(--ink);padding:11px 16px;border-radius:10px;font-weight:600;min-height:44px;cursor:pointer}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--bad)}
+.btn.small{min-height:36px;padding:6px 12px;font-size:13px}
+.btn:disabled{opacity:.5}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:13px;color:var(--ink2);font-weight:500}
+.field input,.field select,.field textarea{background:var(--bg);border:1px solid var(--hair);border-radius:9px;padding:10px 11px;min-height:44px;width:100%;min-width:0;font-variant-numeric:tabular-nums}
+.field small{font-size:12px;color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.note{background:var(--warn-bg);color:var(--warn-ink);border-radius:10px;padding:10px 12px;font-size:13px}
+.note.info{background:var(--soft);color:var(--ink2)}
+.scroll{overflow-x:auto;margin-inline:-4px;padding-inline:4px}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600;text-align:right;padding:6px 8px;white-space:nowrap;border-bottom:1px solid var(--hair)}
+td{padding:8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--hair)}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--surface)}
+tr.hl td{background:var(--soft)}
+tr[data-act]{cursor:pointer}
+.bar{height:10px;background:var(--soft);border-radius:6px;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--c-solar);border-radius:6px}
+input[type=range]{width:100%;accent-color:var(--accent);min-height:36px}
+.slider{display:flex;flex-direction:column;gap:2px}
+.slider .top{display:flex;justify-content:space-between;font-size:13px;color:var(--ink2);gap:8px}
+.slider .top b{color:var(--ink);font-variant-numeric:tabular-nums}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--hair);
+  padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));display:flex;gap:2px;z-index:5}
+nav button{flex:1;border:0;background:transparent;color:var(--muted);font:inherit;font-size:11px;font-weight:600;
+  display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;min-height:48px;border-radius:10px;cursor:pointer;min-width:0}
+nav button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav button[aria-current="page"]{color:var(--accent);background:var(--soft)}
+#upd{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));max-width:420px;margin-inline:auto;
+  background:var(--surface);color:var(--ink);border:1px solid var(--hair);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.15);
+  padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px;font-weight:600;z-index:8}
+#toast{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));max-width:420px;margin-inline:auto;
+  background:var(--ink);color:var(--bg);padding:11px 14px;border-radius:10px;font-size:14px;z-index:9;text-align:center}
+.eq{border-top:1px solid var(--hair);padding-top:14px;display:flex;flex-direction:column;gap:10px}
+.eq:first-of-type{border-top:0;padding-top:0}
+.good{color:var(--good);font-weight:600}
+.empty{padding:28px 16px;text-align:center;color:var(--ink2);display:flex;flex-direction:column;gap:10px;align-items:center}
+@media (prefers-reduced-motion:no-preference){.card,.tile{transition:border-color .15s}}
+.checks{display:flex;flex-direction:column}
+.check{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 0;border-top:1px solid var(--hair);min-height:48px}
+label.check{justify-content:flex-start;cursor:pointer}
+.check input{width:22px;height:22px;margin:0;accent-color:var(--accent);flex:none}
+.check span{display:flex;flex-direction:column;min-width:0;font-weight:500}
+.check small{color:var(--muted);font-size:12px;font-weight:400}
+details.add summary{cursor:pointer;font-weight:600;color:var(--accent);padding:8px 0;min-height:40px}
+details.add .addbody{display:flex;flex-direction:column;gap:10px;padding-top:4px}
+nav button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note.info.backup{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+<nav id="nav" aria-label="Sections"></nav>
+<div id="toast" role="status" hidden></div>
+<input type="file" id="imp-file" hidden>
+
+<script>
+/* ---------- utilitaires ---------- */
+const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+const MS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+const nf=(d)=>new Intl.NumberFormat('fr-FR',{maximumFractionDigits:d,minimumFractionDigits:d});
+const N0=nf(0),N1=nf(1),N2=nf(2);
+const fmt=(v,d=0)=>nf(d).format(v);
+const eur=(v,d=0)=>nf(d).format(v)+' €';
+const pc=(v,d=0)=>nf(d).format(v*100)+' %';
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const num=s=>{const v=parseFloat(String(s).replace(/\s/g,'').replace(',','.'));return isFinite(v)?v:NaN};
+const keyOf=(y,m)=>y+'-'+String(m+1).padStart(2,'0');
+
+const DEF={ratio:1402,tauxBase:.40,bonus:.037,plafond:.90,startYear:2025,prix:.1545,abo:19.71,rachat:0,consoGrowth:0,priceGrowth:0};
+const TARIFS=[
+ ['Jour Bleu, heures creuses',.13254],['Jour Bleu, heures pleines',.16122],
+ ['Jour Blanc, heures creuses',.14994],['Jour Blanc, heures pleines',.18714],
+ ['Jour Rouge, heures creuses',.1575],['Jour Rouge, heures pleines',.70602]];
+/* kWh facturés par option Tempo : données personnelles, rangées dans settings/tempo (pas dans le code) */
+const tempoKwh=()=>{const t=S.settings.tempo;return t&&Array.isArray(t.kwh)&&t.kwh.length===TARIFS.length?t.kwh:null};
+
+/* ---------- état ---------- */
+const S={months:{},parc:{},settings:{},tab:'accueil',range:12,mview:'graph',scen:null,edit:null,confirmDel:null,
+  loaded:{months:false,parc:false,settings:false},err:null};
+try{const t=localStorage.getItem('ss-tab');if(t)S.tab=t}catch(e){}
+let db=null,charts=[],pending=[];
+const cfg=()=>({...DEF,...(S.settings.main||{})});
+const scen=()=>{if(!S.scen){const c=cfg();S.scen={priceGrowth:c.priceGrowth,consoGrowth:c.consoGrowth,rachat:c.rachat}}return S.scen};
+const parcList=()=>Object.entries(S.parc).map(([id,e])=>({id,...e})).sort((a,b)=>(a.date||'')<(b.date||'')?-1:1);
+
+function monthsList(){
+  const c=cfg();
+  return Object.entries(S.months).map(([k,m])=>({key:k,...m})).sort((a,b)=>a.key<b.key?-1:1).map(m=>({
+    ...m,solar:m.conso-m.reseau,taux:m.prod?m.usage/m.prod:0,autos:m.conso?1-m.reseau/m.conso:0,
+    cout:m.reseau*c.prix+c.abo-Math.max(0,m.prod-m.usage)*c.rachat}));
+}
+function last12(ml){return ml.slice(-12)}
+function consoBase(ml){
+  const l=last12(ml);if(!l.length)return 0;
+  const s=l.reduce((a,m)=>a+m.conso,0);return l.length>=12?s:s/l.length*12;
+}
+
+/* ---------- modèle de projection : project() est dans model.js (identique au classeur) ---------- */
+function scenarioCfg(){return {...cfg(),...scen()}}
+function runProject(){
+  const ml=monthsList(),c=scenarioCfg();
+  return project(parcList(),c,consoBase(ml),c.startYear);
+}
+
+/* ---------- graphiques ---------- */
+function legendHtml(items){return '<div class="legend">'+items.map(i=>`<span><i style="background:var(${i[1]})"></i>${esc(i[0])}</span>`).join('')+'</div>'}
+function chartCard(id,title,items,builder,tall){
+  pending.push({id,builder});
+  return `<section class="card"><h3>${title}</h3>${items?legendHtml(items):''}<div class="chartbox${tall?' tall':''}"><canvas id="${id}" role="img" aria-label="${esc(title)}"></canvas></div></section>`;
+}
+function flush(){
+  charts.forEach(c=>c.destroy());charts=[];
+  if(typeof Chart==='undefined'){pending=[];return}
+  Chart.defaults.font.family=css('--f-body');Chart.defaults.font.size=11;Chart.defaults.color=css('--muted');
+  pending.forEach(p=>{const el=document.getElementById(p.id);if(el){try{charts.push(new Chart(el,p.builder()))}catch(e){console.error(e)}}});
+  pending=[];
+}
+const marksPlugin={id:'marks',afterDatasetsDraw(chart,a,o){
+  if(!o||!o.items||!o.items.length)return;
+  const {ctx,chartArea:ar,scales:{x}}=chart,step=x.getPixelForValue(1)-x.getPixelForValue(0);
+  o.items.forEach(it=>{
+    const px=x.getPixelForValue(it.idx)+(it.frac-.5)*step;
+    ctx.save();ctx.strokeStyle=css('--ink2');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(px,ar.top);ctx.lineTo(px,ar.bottom);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=css('--ink2');ctx.font='600 11px '+css('--f-body');
+    const left=px<(ar.left+ar.right)/2;ctx.textAlign=left?'left':'right';
+    ctx.fillText(it.label,px+(left?5:-5),ar.top+11);ctx.restore();
+  });
+}};
+function baseOpts(o={}){
+  const hair=css('--hair'),surf=css('--surface'),ink=css('--ink'),ink2=css('--ink2');
+  const yfmt=o.yfmt||(v=>fmt(v));
+  return {
+    responsive:true,maintainAspectRatio:false,animation:false,
+    interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:false},
+      tooltip:{backgroundColor:surf,titleColor:ink,bodyColor:ink2,borderColor:hair,borderWidth:1,padding:10,
+        boxPadding:4,usePointStyle:true,
+        callbacks:{label:c=>' '+c.dataset.label+' : '+(o.tipfmt?o.tipfmt(c.parsed.y):yfmt(c.parsed.y)),
+          afterBody:o.afterBody||undefined}},
+      marks:{items:o.marks||[]}},
+    scales:{
+      x:{stacked:!!o.stacked,grid:{display:false},border:{color:hair},ticks:{autoSkip:true,maxRotation:0,color:css('--muted')}},
+      y:{stacked:!!o.stacked,beginAtZero:true,max:o.ymax,grid:{color:hair},border:{display:false},
+        ticks:{callback:v=>yfmt(v),color:css('--muted'),maxTicksLimit:6}}}
+  };
+}
+function bars(labels,sets,o={}){
+  return {type:'bar',plugins:[marksPlugin],data:{labels,datasets:sets.map(s=>({label:s.label,data:s.data,
+    backgroundColor:css(s.color),borderRadius:o.stacked?0:4,borderSkipped:false,
+    borderColor:o.stacked?css('--surface'):'transparent',borderWidth:o.stacked?2:0,
+    barPercentage:.82,categoryPercentage:.8}))},options:baseOpts(o)};
+}
+function lines(labels,sets,o={}){
+  return {type:'line',plugins:[marksPlugin],data:{labels,datasets:sets.map(s=>({label:s.label,data:s.data,
+    borderColor:css(s.color),backgroundColor:css(s.color),borderWidth:2,pointRadius:o.points?3:0,pointHoverRadius:5,
+    pointBackgroundColor:css(s.color),pointBorderColor:css('--surface'),pointBorderWidth:2,
+    stepped:s.stepped||false,borderDash:s.dash||[],tension:0}))},options:baseOpts(o)};
+}
+function monthLabels(list){
+  return list.map((m,i)=>(i===0||m.month===0)?[MS[m.month].replace('.',''),String(m.year)]:MS[m.month].replace('.',''));
+}
+function batteryMarks(list){
+  const items=[];
+  parcList().filter(e=>e.type==='Batterie'&&e.date).forEach(e=>{
+    const idx=list.findIndex(m=>m.key===e.date.slice(0,7));
+    if(idx>=0){const [y,mo,d]=e.date.split('-').map(Number);const dim=new Date(y,mo,0).getDate();items.push({idx,frac:(d-1)/dim,label:'Batterie'})}
+  });
+  return items;
+}
+
+/* ---------- vues ---------- */
+const ICONS={
+ accueil:'<svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg>',
+ mois:'<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>',
+ projection:'<svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg>',
+ rentabilite:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9.5h5M9 14.5h5M8 12h6"/></svg>',
+ simulation:'<svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
+ donnees:'<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.500 3.500a2.100 2.100 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>'};
+const TABS=[['accueil','Accueil'],['mois','Mois'],['projection','Projection'],['rentabilite','Rentabilité'],['simulation','Simulation'],['donnees','Données']];
+
+function emptyState(){
+  if(S.err==='nodb'||S.err==='not_granted')return `<div class="card empty"><h2>Données indisponibles</h2><p>Le stockage du navigateur n'est pas accessible. Quitte la navigation privée, puis recharge l'appli.</p></div>`;
+  return `<div class="card empty"><h2>Aucun mois saisi</h2><p>Ajoute les quatre chiffres de ton appli solaire pour voir tes courbes.</p><button class="btn primary" data-act="tab" data-tab="donnees">Saisir un mois</button></div>`;
+}
+function installInfo(){
+  const today=new Date().toISOString().slice(0,10);
+  const act=parcList().filter(e=>(e.type==='Panneaux'||e.type==='Batterie')&&e.date&&e.date<=today);
+  const kwc=act.filter(e=>e.type==='Panneaux').reduce((a,e)=>a+e.cap,0);
+  const kwh=act.filter(e=>e.type==='Batterie').reduce((a,e)=>a+e.cap,0);
+  const cost=act.reduce((a,e)=>a+(e.cost||0),0);
+  return {kwc,kwh,cost};
+}
+function missingMonths(ml){
+  if(!ml.length)return [];
+  const last=ml[ml.length-1],now=new Date();let y=last.year,m=last.month+1;const out=[];
+  while(y<now.getFullYear()||(y===now.getFullYear()&&m<now.getMonth())){
+    if(m>11){m=0;y++;continue}
+    out.push({y,m});m++;if(out.length>24)break;
+  }
+  return out;
+}
+function measuredSavings(ml){
+  const c=cfg();return ml.reduce((a,m)=>a+m.usage*c.prix+Math.max(0,m.prod-m.usage)*c.rachat,0);
+}
+
+function vAccueil(){
+  const ml=monthsList(),inst=installInfo();
+  const head=`<div class="head"><h1>Suivi solaire</h1><p class="sub">${inst.kwc?fmt(inst.kwc,1)+' kWc':'Panneaux'}${inst.kwh?' · batterie '+fmt(inst.kwh,2)+' kWh':''}</p></div>`;
+  if(!ml.length)return head+emptyState();
+  const l=last12(ml),sum=k=>l.reduce((a,m)=>a+m[k],0);
+  const prod=sum('prod'),usage=sum('usage'),conso=sum('conso'),reseau=sum('reseau');
+  const autos=1-reseau/conso,taux=usage/prod;
+  let h=head;
+  if(backupDue())h+=`<div class="note info backup"><span>${backupLine()} Pense à exporter une sauvegarde, l'iPhone peut effacer les données de l'appli.</span><button class="btn small" data-act="export">Exporter</button></div>`;
+  h+=`<section class="card"><span class="label">Autosuffisance, ${l.length>=12?'12 derniers mois':l.length+' mois saisis'}</span>
+    <div class="big">${pc(autos)}</div>
+    <p class="sub">Le solaire a couvert ${pc(autos)} de ta consommation : ${fmt(conso-reseau)} kWh sur ${fmt(conso)} kWh.</p></section>`;
+  h+=`<div class="tiles">
+    <div class="tile"><span class="label">Production</span><span class="mid">${fmt(prod)}</span><span class="unit">kWh</span></div>
+    <div class="tile"><span class="label">Consommation</span><span class="mid">${fmt(conso)}</span><span class="unit">kWh</span></div>
+    <div class="tile"><span class="label">Autoconso.</span><span class="mid">${pc(taux)}</span><span class="hint">de ta production utilisée sur place</span></div></div>`;
+  const miss=missingMonths(ml);
+  if(miss.length){
+    const names=miss.map(x=>MOIS[x.m]+(x.y!==miss[0].y?' '+x.y:'')).join(', ');
+    h+=`<div class="note"><b>${miss.length>1?'Mois à saisir':'Mois à saisir'} :</b> ${esc(names)}.<br><button class="btn small" style="margin-top:8px" data-act="newmonth" data-y="${miss[0].y}" data-m="${miss[0].m}">Saisir ${MOIS[miss[0].m]}</button></div>`;
+  }
+  const items=[['Solaire (direct + batterie)','--c-solar'],['Réseau','--c-conso']];
+  const ll=l,labs=monthLabels(ll);
+  h+=chartCard('c-home','D\'où vient ton électricité (kWh par mois)',items,()=>bars(labs,[
+    {label:'Solaire',data:ll.map(m=>+m.solar.toFixed(1)),color:'--c-solar'},
+    {label:'Réseau',data:ll.map(m=>+m.reseau.toFixed(1)),color:'--c-conso'}],
+    {stacked:true,marks:batteryMarks(ll),afterBody:it=>{const i=it[0].dataIndex;return 'Total : '+fmt(ll[i].conso)+' kWh'}}));
+  const achat=l.reduce((a,m)=>a+m.reseau*cfg().prix,0),abo=l.length*cfg().abo;
+  h+=`<section class="card"><span class="label">Coût net estimé, ${l.length} mois</span><div class="mid">${eur(achat+abo)}</div>
+    <p class="sub">${eur(achat)} d'électricité achetée au réseau (${fmt(reseau)} kWh à ${fmt(cfg().prix*100,2)} c€/kWh) et ${eur(abo)} d'abonnement.</p></section>`;
+  const saved=measuredSavings(ml);
+  if(inst.cost>0){
+    const p=Math.min(1,saved/inst.cost);
+    h+=`<section class="card"><span class="label">Investissement récupéré</span>
+      <div class="bar" role="img" aria-label="${pc(p)} récupéré"><i style="width:${(p*100).toFixed(1)}%"></i></div>
+      <p class="sub"><b style="color:var(--ink)">${eur(saved)}</b> d'électricité solaire consommée depuis ${MOIS[ml[0].month]} ${ml[0].year}, sur ${eur(inst.cost)} investis (${pc(p,1)}).</p>
+      <button class="btn small" data-act="tab" data-tab="rentabilite" style="align-self:flex-start">Voir la rentabilité</button></section>`;
+  }
+  const lm=ml[ml.length-1];
+  h+=`<section class="card"><span class="label">Dernier mois saisi</span><h2>${MOIS[lm.month]} ${lm.year}</h2>
+    <div class="grid2"><div><div class="mid">${fmt(lm.prod)} kWh</div><span class="sub">produits</span></div>
+    <div><div class="mid">${fmt(lm.conso)} kWh</div><span class="sub">consommés</span></div>
+    <div><div class="mid">${pc(lm.taux)}</div><span class="sub">autoconsommation</span></div>
+    <div><div class="mid">${pc(lm.autos)}</div><span class="sub">autosuffisance</span></div></div>
+    ${lm.note?`<p class="sub">${esc(lm.note)}</p>`:''}</section>`;
+  return h;
+}
+
+function vMois(){
+  const ml=monthsList();
+  let h=`<div class="head"><h1>Mois par mois</h1><p class="sub">Données de ton appli solaire, mois après mois.</p></div>`;
+  if(!ml.length)return h+emptyState();
+  const list=S.range===12?last12(ml):ml;
+  h+=`<div class="row2"><div class="seg" role="group" aria-label="Période">
+    <button data-act="range" data-v="12" aria-pressed="${S.range===12}">12 mois</button>
+    <button data-act="range" data-v="0" aria-pressed="${S.range!==12}">Tout</button></div>
+    <div class="seg" role="group" aria-label="Affichage">
+    <button data-act="mview" data-v="graph" aria-pressed="${S.mview==='graph'}">Graphiques</button>
+    <button data-act="mview" data-v="table" aria-pressed="${S.mview==='table'}">Tableau</button></div></div>`;
+  if(S.mview==='table'){
+    h+=`<section class="card"><div class="scroll"><table><thead><tr><th>Mois</th><th>Prod.</th><th>Usage</th><th>Conso.</th><th>Réseau</th><th>Autoconso</th><th>Autosuff.</th><th>Coût net</th></tr></thead><tbody>`+
+      list.slice().reverse().map(m=>`<tr data-act="edit" data-key="${m.key}"><td>${MS[m.month]} ${String(m.year).slice(2)}</td><td>${fmt(m.prod)}</td><td>${fmt(m.usage)}</td><td>${fmt(m.conso)}</td><td>${fmt(m.reseau)}</td><td>${pc(m.taux)}</td><td>${pc(m.autos)}</td><td>${eur(m.cout)}</td></tr>`).join('')+
+      `</tbody></table></div><p class="sub">Énergies en kWh. Touche une ligne pour la modifier.</p></section>`;
+    return h;
+  }
+  const labs=monthLabels(list),marks=batteryMarks(list);
+  h+=chartCard('c-pc','Production et consommation (kWh)',[['Production','--c-prod'],['Consommation','--c-conso']],()=>bars(labs,[
+    {label:'Production',data:list.map(m=>m.prod),color:'--c-prod'},{label:'Consommation',data:list.map(m=>m.conso),color:'--c-conso'}],{marks}));
+  h+=chartCard('c-or','D\'où vient ton électricité (kWh)',[['Solaire (direct + batterie)','--c-solar'],['Réseau','--c-conso']],()=>bars(labs,[
+    {label:'Solaire',data:list.map(m=>+m.solar.toFixed(1)),color:'--c-solar'},{label:'Réseau',data:list.map(m=>m.reseau),color:'--c-conso'}],
+    {stacked:true,marks,afterBody:it=>'Total : '+fmt(list[it[0].dataIndex].conso)+' kWh'}));
+  h+=chartCard('c-rt','Autoconsommation et autosuffisance',[['Autoconsommation (part de la production utilisée)','--c-prod'],['Autosuffisance (part de la conso couverte)','--c-solar']],()=>lines(labs,[
+    {label:'Autoconsommation',data:list.map(m=>+(m.taux*100).toFixed(1)),color:'--c-prod'},{label:'Autosuffisance',data:list.map(m=>+(m.autos*100).toFixed(1)),color:'--c-solar'}],
+    {yfmt:v=>fmt(v)+' %',ymax:100,points:true,marks}));
+  h+=chartCard('c-ct','Coût net estimé (€ par mois)',null,()=>bars(labs,[
+    {label:'Coût net',data:list.map(m=>+m.cout.toFixed(2)),color:'--c-conso'}],{yfmt:v=>fmt(v)+' €',tipfmt:v=>fmt(v,2)+' €',marks}));
+  h+=`<p class="sub">Les barres de production et de consommation montrent surtout la saison. Compare un mois à son équivalent de l'année précédente, pas à son voisin.</p>`;
+  return h;
+}
+
+function sliderBlock(){
+  const s=scen();
+  const sl=(id,label,min,max,step,val,f)=>`<div class="slider"><div class="top"><label for="${id}">${label}</label><b id="${id}-v">${f(val)}</b></div><input type="range" id="${id}" data-act="scen" data-k="${id.replace('sc-','')}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`;
+  const dirty=JSON.stringify(s)!==JSON.stringify({priceGrowth:cfg().priceGrowth,consoGrowth:cfg().consoGrowth,rachat:cfg().rachat});
+  return `<section class="card"><h3>Hypothèses à tester</h3>
+    ${sl('sc-priceGrowth','Prix de l\'électricité, par an',0,8,.5,+(s.priceGrowth*100).toFixed(1),v=>'+'+fmt(v,1)+' %')}
+    ${sl('sc-consoGrowth','Ta consommation, par an',0,5,.5,+(s.consoGrowth*100).toFixed(1),v=>'+'+fmt(v,1)+' %')}
+    ${sl('sc-rachat','Prix de rachat du surplus',0,15,1,+(s.rachat*100).toFixed(0),v=>fmt(v,0)+' c€/kWh')}
+    <div class="row2"><button class="btn small" data-act="scenreset">Revenir aux valeurs enregistrées</button>
+    <button class="btn small primary" data-act="scensave" ${dirty?'':'disabled'}>Enregistrer ces valeurs</button></div></section>`;
+}
+
+function projResults(){
+  const ml=monthsList();
+  if(!ml.length||!Object.keys(S.parc).length)return emptyState();
+  const p=runProject(),rows=p.rows,labs=rows.map(r=>String(r.y));
+  let h='';
+  h+=chartCard('c-pj1','Production estimée et solaire consommé (kWh par an)',[['Production estimée','--c-prod'],['Solaire consommé sur place','--c-solar']],()=>bars(labs,[
+    {label:'Production',data:rows.map(r=>Math.round(r.E)),color:'--c-prod'},{label:'Solaire consommé',data:rows.map(r=>Math.round(r.G)),color:'--c-solar'}],{}),true);
+  h+=chartCard('c-pj2','Facture annuelle estimée (€)',[['Sans solaire','--c-conso'],['Avec ton installation','--c-solar']],()=>lines(labs,[
+    {label:'Sans solaire',data:rows.map(r=>Math.round(r.sans)),color:'--c-conso'},{label:'Avec ton installation',data:rows.map(r=>Math.round(r.M)),color:'--c-solar'}],
+    {yfmt:v=>fmt(v)+' €'}));
+  h+=`<section class="card"><h3>Année par année</h3><div class="scroll"><table><thead><tr><th>Année</th><th>Panneaux</th><th>Batterie</th><th>Production</th><th>Autoconso</th><th>Réseau</th><th>Facture</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr${r.y===p.payA?' class="hl"':''}><td>${r.y}</td><td>${fmt(r.capP,2)} kWc</td><td>${fmt(r.capB,1)} kWh</td><td>${fmt(r.E)}</td><td>${pc(r.F)}</td><td>${fmt(r.I)}</td><td>${eur(r.M)}</td></tr>`).join('')+
+    `</tbody></table></div><p class="sub">Panneaux et batterie : capacité restante en fin d'année. La première année d'un équipement compte au prorata des jours.</p></section>`;
+  return h;
+}
+function vProjection(){
+  return `<div class="head"><h1>Projection</h1><p class="sub">20 ans d'estimation, avec l'usure des panneaux et de la batterie.</p></div>`+sliderBlock()+`<div id="results" style="display:flex;flex-direction:column;gap:16px;min-width:0">${projResults()}</div>`;
+}
+
+function jours(c,p){
+  const hp=TARIFS[5],kwh=tempoKwh(),nJR=22,cap=(parcList().find(e=>e.type==='Batterie')||{cap:0}).cap;
+  const perDay=(kwh?kwh[5]:0)/nJR,cov=Math.min(perDay,cap),gain=nJR*cov*(hp[1]-c.prix);
+  const hc=(TARIFS[0][1]+TARIFS[2][1])/2,cost=cov/.9*hc,forced=nJR*(cov*hp[1]-cost);
+  return {perDay,cov,gain,forced,ratio:hp[1]/c.prix};
+}
+function roiResults(){
+  const ml=monthsList();
+  if(!ml.length||!Object.keys(S.parc).length)return emptyState();
+  const c=scenarioCfg(),p=runProject(),rows=p.rows,labs=rows.map(r=>String(r.y));
+  const end=rows[rows.length-1],inst=installInfo(),saved=measuredSavings(ml);
+  const yrs=(y,first)=>y&&first?` (${y-first} ans)`:'';
+  let h=`<div class="tiles">
+    <div class="tile"><span class="label">Investissement</span><span class="mid">${eur(p.costAll)}</span><span class="hint">panneaux ${eur(p.costP)} · batteries ${eur(p.costB)}</span></div>
+    <div class="tile"><span class="label">Retour, installation</span><span class="mid">${p.payA||'Après '+rows[rows.length-1].y}</span><span class="hint">${p.payA?(p.payA-p.firstEq)+' ans après la mise en service':'au-delà de la projection'}</span></div>
+    <div class="tile"><span class="label">Retour, batterie seule</span><span class="mid">${p.costB?(p.payB||'Après '+rows[rows.length-1].y):'—'}</span><span class="hint">${p.payB&&p.firstBat?(p.payB-p.firstBat)+' ans après la 1re batterie':''}</span></div>
+    <div class="tile"><span class="label">Économie sur 20 ans</span><span class="mid">${eur(end.R)}</span><span class="hint">cumulée, jusqu'en ${end.y}</span></div></div>`;
+  const future=parcList().filter(e=>e.type==='Batterie'&&e.date>new Date().toISOString().slice(0,10));
+  if(future.length)h+=`<div class="note info">Le calcul inclut ${future.length>1?future.length+' batteries prévues':'une batterie prévue'} : ${future.map(e=>esc(e.name||'Batterie')+' le '+e.date.split('-').reverse().join('/')+' ('+eur(e.cost||0)+')').join(', ')}. Modifie ou supprime-la dans l'onglet Données.</div>`;
+  h+=chartCard('c-r1','Installation complète : économie cumulée (€)',[['Économie cumulée','--c-solar'],['Investissement total','--c-conso']],()=>lines(labs,[
+    {label:'Économie cumulée',data:rows.map(r=>Math.round(r.R)),color:'--c-solar'},{label:'Investissement total',data:rows.map(()=>p.costAll),color:'--c-conso',dash:[6,4]}],{yfmt:v=>fmt(v)+' €'}),true);
+  if(p.costB>0)h+=chartCard('c-r2','Batterie seule : économie cumulée (€)',[['Économie cumulée','--c-solar'],['Coût des batteries','--c-conso']],()=>lines(labs,[
+    {label:'Économie cumulée',data:rows.map(r=>Math.round(r.P)),color:'--c-solar'},{label:'Coût des batteries',data:rows.map(()=>p.costB),color:'--c-conso',dash:[6,4]}],{yfmt:v=>fmt(v)+' €'}));
+  if(inst.cost>0){
+    const pr=Math.min(1,saved/inst.cost),l=last12(ml),s12=measuredSavings(l);
+    h+=`<section class="card"><h3>Mesuré à ce jour</h3><div class="bar"><i style="width:${(pr*100).toFixed(1)}%"></i></div>
+      <p class="sub"><b style="color:var(--ink)">${eur(saved)}</b> récupérés sur ${eur(inst.cost)} d'équipements installés (${pc(pr,1)}). Sur les ${l.length} derniers mois : ${eur(s12)}. Chaque kWh solaire consommé sur place est compté au prix moyen de ${fmt(c.prix*100,2)} c€/kWh.</p></section>`;
+  }
+  const j=jours(cfg(),p),tk=tempoKwh();
+  h+=`<section class="card"><h3>Jours rouges Tempo</h3>
+    <p class="sub">Un kWh en heures pleines un jour rouge coûte ${fmt(TARIFS[5][1]*100,1)} c€, soit ${fmt(j.ratio,1)} fois le prix moyen que le modèle utilise.${tk?` Réserver la batterie à ces soirées vaut environ ${eur(j.gain)} par an avec le surplus solaire (charge gratuite, selon la météo), ${eur(j.forced)} par an avec une recharge forcée sur le réseau la veille (garantie, à rendement de 90 %). Ce gain s'ajoute à la rentabilité ci-dessus.`:''}</p>
+    <div class="scroll"><table><thead><tr><th>Option Tempo</th><th>€ TTC/kWh</th>${tk?'<th>kWh facturés</th>':''}</tr></thead><tbody>${TARIFS.map((t,i)=>`<tr><td>${t[0]}</td><td>${fmt(t[1],4)}</td>${tk?`<td>${fmt(tk[i])}</td>`:''}</tr>`).join('')}</tbody></table></div>
+    <p class="sub">Tarifs au 01/02/2026.${tk&&S.settings.tempo.source?' Consommation : '+esc(S.settings.tempo.source)+'.':''}</p></section>`;
+  return h;
+}
+function vRentab(){
+  return `<div class="head"><h1>Rentabilité</h1><p class="sub">Quand l'installation se rembourse, selon les hypothèses ci-dessous.</p></div>`+sliderBlock()+`<div id="results" style="display:flex;flex-direction:column;gap:16px;min-width:0">${roiResults()}</div>`;
+}
+
+/* ---------- simulation : ton installation comparée à une variante (en mémoire, rien n'est enregistré) ---------- */
+const simList=()=>parcList().filter(e=>(e.type==='Panneaux'||e.type==='Batterie')&&e.date);
+const unitOf=e=>e.type==='Batterie'?'kWh':'kWc';
+const frDay=d=>d.split('-').reverse().join('/');
+function sim(){
+  if(!S.sim){const off={};simList().forEach(e=>{if(e.type==='Batterie')off[e.id]=true});S.sim={off,extra:[]}}
+  return S.sim;
+}
+function simRuns(){
+  const ml=monthsList(),c=scenarioCfg(),cb=consoBase(ml),s=sim();
+  const run=parc=>{
+    const p=project(parc,c,cb,c.startYear);let bills=0;
+    p.cum=p.rows.map(r=>{bills+=r.M;return parc.filter(e=>+e.date.slice(0,4)<=r.y).reduce((a,e)=>a+(e.cost||0),0)+bills});
+    p.bills=bills;p.autoMoy=p.rows.reduce((a,r)=>a+r.G,0)/(p.rows.reduce((a,r)=>a+r.E,0)||1);
+    return p;
+  };
+  const base=simList();
+  return {a:run(base),b:run(base.filter(e=>!s.off[e.id]).concat(s.extra))};
+}
+function simSummary(a,b){
+  const rows=a.rows,end=rows.length-1,n=rows.length,dInv=a.costAll-b.costAll;
+  if(Math.abs(dInv)<1&&Math.abs(a.bills-b.bills)<1)return {net:0,pay:null,text:'La variante donne le même résultat que ton installation. Décoche un équipement ou ajoute-en un pour comparer.'};
+  const hiA=dInv>=0,hi=hiA?a:b,lo=hiA?b:a,who=hiA?'Ton installation':'La variante';
+  const net=lo.cum[end]-hi.cum[end];
+  let k=-1;for(let i=0;i<=end;i++)if(hi.cum[i]>lo.cum[i]+.005)k=i;
+  const pay=k<end?rows[k+1].y:null;
+  let text=`${who} coûte ${eur(Math.abs(dInv))} de plus en équipements et réduit les factures de ${eur(lo.bills-hi.bills)} sur ${n} ans. `;
+  text+=net>=0?`Le surcoût est remboursé en ${pay}, puis rapporte : gain net de ${eur(net)} jusqu'en ${rows[end].y}.`:`Le surcoût n'est pas remboursé avant ${rows[end].y} : perte nette de ${eur(-net)}.`;
+  return {net:hiA?net:-net,pay,text};
+}
+function simControls(){
+  const s=sim(),list=simList();
+  const noBat=list.every(e=>!!s.off[e.id]===(e.type==='Batterie'))&&!s.extra.length;
+  const all=list.every(e=>!s.off[e.id])&&!s.extra.length;
+  const today=new Date().toISOString().slice(0,10);
+  return `<section class="card"><h3>Variante à comparer</h3>
+    <div class="seg" role="group" aria-label="Préréglage">
+      <button data-act="simpreset" data-v="nobat" aria-pressed="${noBat}">Sans batterie</button>
+      <button data-act="simpreset" data-v="all" aria-pressed="${all}">Tout inclus</button></div>
+    <div class="checks">${list.map(e=>`<label class="check"><input type="checkbox" data-act="simtoggle" data-id="${e.id}" ${s.off[e.id]?'':'checked'}><span>${esc(e.name||e.type)}<small>${fmt(e.cap,2)} ${unitOf(e)} · ${frDay(e.date)} · ${eur(e.cost||0)}</small></span></label>`).join('')}
+    ${s.extra.map((e,i)=>`<div class="check"><span>${esc(e.name)}<small>fictif · ${frDay(e.date)} · ${eur(e.cost)}</small></span><button class="btn small danger" data-act="simdel" data-i="${i}">Retirer</button></div>`).join('')}</div>
+    <details class="add"><summary>Ajouter un équipement fictif</summary><div class="addbody">
+      <div class="grid2"><div class="field"><label for="sx-type">Type</label><select id="sx-type"><option>Batterie</option><option>Panneaux</option></select></div>
+      <div class="field"><label for="sx-date">Mise en service</label><input type="date" id="sx-date" value="${today}"></div>
+      <div class="field"><label for="sx-cap">Capacité (kWh ou kWc)</label><input id="sx-cap" inputmode="decimal" value="7,68"></div>
+      <div class="field"><label for="sx-cost">Coût TTC (€)</label><input id="sx-cost" inputmode="decimal" value="3500"></div></div>
+      <p class="sub">Usure : 2 %/an pour une batterie, 0,5 %/an pour des panneaux.</p>
+      <button class="btn small primary" data-act="simadd" style="align-self:flex-start">Ajouter à la variante</button></div></details>
+    <p class="sub">Coché : inclus dans la variante. Rien n'est enregistré, tes données ne changent pas.</p></section>`;
+}
+function simResults(){
+  if(!monthsList().length||!simList().length)return '';
+  const {a,b}=simRuns(),rows=a.rows,labs=rows.map(r=>String(r.y)),end=rows.length-1,sm=simSummary(a,b);
+  const pay=p=>p.costAll?(p.payA||'Après '+rows[end].y):'—';
+  let h=`<section class="card"><span class="label">Écart sur ${rows.length} ans, en faveur de ${sm.net>=0?'ton installation':'la variante'}</span>
+    <div class="big">${eur(Math.abs(sm.net))}</div><p class="sub">${sm.text}</p></section>`;
+  h+=`<section class="card"><div class="scroll"><table><thead><tr><th></th><th>Ton installation</th><th>Variante</th></tr></thead><tbody>
+    <tr><td>Investissement</td><td>${eur(a.costAll)}</td><td>${eur(b.costAll)}</td></tr>
+    <tr><td>Factures sur ${rows.length} ans</td><td>${eur(a.bills)}</td><td>${eur(b.bills)}</td></tr>
+    <tr><td>Coût total</td><td>${eur(a.cum[end])}</td><td>${eur(b.cum[end])}</td></tr>
+    <tr><td>Autoconso. moyenne</td><td>${pc(a.autoMoy)}</td><td>${pc(b.autoMoy)}</td></tr>
+    <tr><td>Retour sur invest.</td><td>${pay(a)}</td><td>${pay(b)}</td></tr></tbody></table></div>
+    <p class="sub">Coût total : équipements payés à leur mise en service, plus les factures d'électricité.</p></section>`;
+  h+=chartCard('c-s1','Coût total cumulé : équipements + factures (€)',[['Ton installation','--c-solar'],['Variante','--c-prod']],()=>lines(labs,[
+    {label:'Ton installation',data:a.cum.map(Math.round),color:'--c-solar'},{label:'Variante',data:b.cum.map(Math.round),color:'--c-prod'}],{yfmt:v=>fmt(v)+' €'}),true);
+  h+=chartCard('c-s2','Facture annuelle estimée (€)',[['Sans solaire','--c-conso'],['Ton installation','--c-solar'],['Variante','--c-prod']],()=>lines(labs,[
+    {label:'Sans solaire',data:rows.map(r=>Math.round(r.sans)),color:'--c-conso',dash:[6,4]},{label:'Ton installation',data:rows.map(r=>Math.round(r.M)),color:'--c-solar'},{label:'Variante',data:b.rows.map(r=>Math.round(r.M)),color:'--c-prod'}],{yfmt:v=>fmt(v)+' €'}));
+  h+=`<section class="card"><h3>Année par année</h3><div class="scroll"><table><thead><tr><th>Année</th><th>Autoconso<br>actuelle</th><th>Autoconso<br>variante</th><th>Facture<br>actuelle</th><th>Facture<br>variante</th><th>Écart</th></tr></thead><tbody>`+
+    rows.map((r,i)=>{const rb=b.rows[i];return `<tr${r.y===sm.pay?' class="hl"':''}><td>${r.y}</td><td>${pc(r.F)}</td><td>${pc(rb.F)}</td><td>${eur(r.M)}</td><td>${eur(rb.M)}</td><td>${(rb.M-r.M>=0?'+':'−')+eur(Math.abs(rb.M-r.M))}</td></tr>`}).join('')+
+    `</tbody></table></div><p class="sub">Écart : facture de la variante moins celle de ton installation.${sm.pay?' Ligne surlignée : année où le surcoût est remboursé.':''}</p></section>`;
+  return h;
+}
+function vSimulation(){
+  const head=`<div class="head"><h1>Simulation</h1><p class="sub">Compare ton installation à une variante, par exemple sans batterie.</p></div>`;
+  if(!monthsList().length||!simList().length)return head+emptyState();
+  return head+simControls()+sliderBlock()+`<div id="results" style="display:flex;flex-direction:column;gap:16px;min-width:0">${simResults()}</div>`;
+}
+
+function monthForm(){
+  const ml=monthsList(),now=new Date();
+  let y,m;
+  if(S.edit){[y,m]=[+S.edit.slice(0,4),+S.edit.slice(5)-1]}
+  else if(ml.length){const l=ml[ml.length-1];y=l.year;m=l.month+1;if(m>11){m=0;y++}}
+  else{y=now.getFullYear();m=now.getMonth()}
+  const key=keyOf(y,m),cur=S.months[key]||{};
+  const ys=[];for(let i=2025;i<=now.getFullYear()+1;i++)ys.push(i);
+  const v=k=>cur[k]!=null?String(cur[k]).replace('.',','):'';
+  return `<section class="card"><h2>Ajouter ou corriger un mois</h2>
+    <p class="sub">Recopie les chiffres des onglets Production et Consommation de ton appli solaire.</p>
+    <div class="grid2"><div class="field"><label for="f-y">Année</label><select id="f-y" data-act="fsel">${ys.map(a=>`<option ${a===y?'selected':''}>${a}</option>`).join('')}</select></div>
+    <div class="field"><label for="f-m">Mois</label><select id="f-m" data-act="fsel">${MOIS.map((n,i)=>`<option value="${i}" ${i===m?'selected':''}>${n}</option>`).join('')}</select></div></div>
+    <div class="grid2">
+    <div class="field"><label for="f-prod">Production (kWh)</label><input id="f-prod" inputmode="decimal" value="${v('prod')}" data-act="fcalc"></div>
+    <div class="field"><label for="f-usage">Usage perso (kWh)</label><input id="f-usage" inputmode="decimal" value="${v('usage')}" data-act="fcalc"><small>Consommation directe + énergie stockée dans la batterie.</small></div>
+    <div class="field"><label for="f-conso">Consommation (kWh)</label><input id="f-conso" inputmode="decimal" value="${v('conso')}" data-act="fcalc"></div>
+    <div class="field"><label for="f-reseau">Du réseau (kWh)</label><input id="f-reseau" inputmode="decimal" value="${v('reseau')}" data-act="fcalc"></div></div>
+    <div class="field"><label for="f-note">Note (facultatif)</label><input id="f-note" value="${esc(cur.note||'')}"></div>
+    <div id="fcheck" class="sub"></div>
+    <div class="row2"><button class="btn primary" data-act="savemonth">Enregistrer</button>
+    ${cur.prod!=null?`<button class="btn danger" data-act="delmonth">${S.confirmDel===key?'Confirmer la suppression':'Supprimer ce mois'}</button>`:''}</div></section>`;
+}
+function eqCard(e){
+  const id=e.id,t=e.type||'Panneaux';
+  return `<div class="eq" data-id="${id}">
+    <div class="grid2"><div class="field"><label for="e-${id}-type">Type</label><select id="e-${id}-type"><option ${t==='Panneaux'?'selected':''}>Panneaux</option><option ${t==='Batterie'?'selected':''}>Batterie</option><option value="Exemple" ${t==='Exemple'?'selected':''}>Exemple (inactif)</option></select></div>
+    <div class="field"><label for="e-${id}-date">Mise en service</label><input type="date" id="e-${id}-date" value="${esc(e.date||'')}"></div></div>
+    <div class="field"><label for="e-${id}-name">Nom</label><input id="e-${id}-name" value="${esc(e.name||'')}"></div>
+    <div class="grid2"><div class="field"><label for="e-${id}-cap">Capacité (${t==='Batterie'?'kWh':'kWc'})</label><input id="e-${id}-cap" inputmode="decimal" value="${e.cap!=null?String(e.cap).replace('.',','):''}"></div>
+    <div class="field"><label for="e-${id}-deg">Usure par an (%)</label><input id="e-${id}-deg" inputmode="decimal" value="${e.deg!=null?String(+(e.deg*100).toFixed(2)).replace('.',','):''}"></div></div>
+    <div class="field"><label for="e-${id}-cost">Coût TTC, pose comprise (€)</label><input id="e-${id}-cost" inputmode="decimal" value="${e.cost!=null?e.cost:''}"></div>
+    <div class="row2"><button class="btn small primary" data-act="saveeq" data-id="${id}">Enregistrer</button><button class="btn small danger" data-act="deleq" data-id="${id}">${S.confirmDel===id?'Confirmer':'Supprimer'}</button></div></div>`;
+}
+function setField(id,label,val,help,pct){
+  return `<div class="field"><label for="s-${id}">${label}</label><input id="s-${id}" inputmode="decimal" value="${String(pct?+(val*100).toFixed(2):val).replace('.',',')}">${help?`<small>${help}</small>`:''}</div>`;
+}
+function vDonnees(){
+  const c=cfg();
+  let h=`<div class="head"><h1>Données</h1><p class="sub">Saisie des mois, équipements et hypothèses du modèle.</p></div>`;
+  h+=monthForm();
+  h+=`<section class="card"><h2>Équipements</h2>${parcList().map(eqCard).join('')||'<p class="sub">Aucun équipement.</p>'}<button class="btn" data-act="addeq">Ajouter un équipement</button></section>`;
+  h+=`<section class="card"><h2>Hypothèses du modèle</h2>
+    ${setField('ratio','Production par kWc et par an (kWh)',c.ratio,'Recale-la sur tes 12 derniers mois avec le bouton ci-dessous.')}
+    <button class="btn small" data-act="recal" style="align-self:flex-start">Recaler sur mes 12 derniers mois</button>
+    <div class="grid2">${setField('tauxBase','Autoconso sans batterie (%)',c.tauxBase,'Taux mesuré avant la mise en service de la batterie.',true)}
+    ${setField('bonus','Bonus par kWh de batterie (%)',c.bonus,'0,40 + 7,5 × 0,037 donne environ 68 %.',true)}
+    ${setField('plafond','Plafond d\'autoconso (%)',c.plafond,'',true)}
+    ${setField('startYear','Première année',c.startYear,'')}
+    ${setField('prix','Prix moyen d\'achat (€/kWh)',c.prix,'Moyenne du mix Tempo au 01/02/2026.')}
+    ${setField('abo','Abonnement (€/mois)',c.abo,'Tempo 9 kVA, CTA incluse.')}
+    ${setField('rachat','Rachat du surplus (€/kWh)',c.rachat,'0 sans contrat de rachat.')}
+    ${setField('priceGrowth','Évolution du prix (%/an)',c.priceGrowth,'',true)}
+    ${setField('consoGrowth','Évolution de la conso (%/an)',c.consoGrowth,'',true)}</div>
+    <button class="btn primary" data-act="savecfg">Enregistrer les hypothèses</button></section>`;
+  h+=`<section class="card"><h2>Sauvegarde</h2>
+    <p class="sub">Tes données sont enregistrées sur ce téléphone uniquement. ${backupLine()}</p>
+    ${backupDue()?`<div class="note">Aucune sauvegarde depuis plus de ${BACKUP_DAYS} jours. iOS peut vider le stockage d'une appli peu utilisée : exporte un fichier et range-le dans Fichiers ou iCloud Drive.</div>`:''}
+    <div class="row2"><button class="btn primary" data-act="export">Exporter une sauvegarde</button>
+    <button class="btn" data-act="import">Importer une sauvegarde</button></div>
+    <p class="sub">Une sauvegarde complète remplace toutes les données actuelles. Un fichier d'ajout de mois ajoute seulement ses mois, sans rien effacer.</p></section>`;
+  h+=`<section class="card"><h3>À propos</h3><p class="sub">Tes chiffres ne sont pas publiés avec l'appli : ils arrivent par un fichier de sauvegarde ou un fichier d'ajout de mois (bouton « Importer »). Tout ce que tu saisis ici est enregistré sur ce téléphone.</p></section>`;
+  return h;
+}
+
+/* ---------- rendu ---------- */
+function render(){
+  const app=document.getElementById('app');
+  pending=[];
+  const f={accueil:vAccueil,mois:vMois,projection:vProjection,rentabilite:vRentab,simulation:vSimulation,donnees:vDonnees}[S.tab]||vAccueil;
+  const ready=S.loaded.months&&S.loaded.parc&&S.loaded.settings;
+  app.innerHTML=(!ready&&!S.err)?`<div class="head"><h1>Suivi solaire</h1><p class="sub">Chargement de tes données…</p></div>`:f();
+  document.getElementById('nav').innerHTML=TABS.map(t=>`<button data-act="tab" data-tab="${t[0]}" ${S.tab===t[0]?'aria-current="page"':''}>${ICONS[t[0]]}<span>${t[1]}</span></button>`).join('');
+  flush();
+  if(S.tab==='donnees')fcalc();
+}
+let rq=0;const schedule=()=>{cancelAnimationFrame(rq);rq=requestAnimationFrame(render)};
+function updateResults(){
+  const el=document.getElementById('results');if(!el)return;
+  pending=[];el.innerHTML=S.tab==='projection'?projResults():S.tab==='simulation'?simResults():roiResults();flush();
+}
+let tt=0;
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,2800)}
+function errMsg(e){
+  const c=e&&e.code;
+  if(c==='invalid_argument')return 'Écriture refusée : seul le propriétaire peut modifier ces données.';
+  if(c==='quota_exceeded')return 'Stockage plein, supprime d\'anciennes entrées.';
+  if(c==='resource_exhausted')return 'Trop de requêtes, réessaie dans un instant.';
+  return 'Enregistrement impossible, réessaie.';
+}
+async function put(path,data){
+  if(!db){toast('Données indisponibles.');return false}
+  try{await db.doc(path).set(data);toast('Enregistré');return true}catch(e){toast(errMsg(e));return false}
+}
+async function del(path){
+  if(!db){toast('Données indisponibles.');return false}
+  try{await db.doc(path).delete();toast('Supprimé');return true}catch(e){toast(errMsg(e));return false}
+}
+
+/* ---------- sauvegarde ---------- */
+const BACKUP_DAYS=30;
+const daysSince=iso=>iso?(Date.now()-Date.parse(iso))/86400000:Infinity;
+const frDate=iso=>new Date(iso).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
+function backupDue(){
+  if(!db)return false;
+  const b=db.backupInfo();
+  return daysSince(b.last||b.since)>BACKUP_DAYS;
+}
+function backupLine(){
+  const b=db?db.backupInfo():{};
+  return b.last?`Dernière sauvegarde le ${frDate(b.last)}.`:'Aucune sauvegarde exportée pour l\'instant.';
+}
+async function exportBackup(){
+  if(!db){toast('Données indisponibles.');return}
+  const name='suivi-solaire-'+new Date().toISOString().slice(0,10)+'.json';
+  const file=new File([db.exportJSON()],name,{type:'application/json'});
+  try{
+    if(matchMedia('(pointer:coarse)').matches&&navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:'Sauvegarde Suivi solaire'});
+    }else{
+      const u=URL.createObjectURL(file),a=document.createElement('a');
+      a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),5000);
+    }
+  }catch(e){if(e&&e.name==='AbortError')return;console.error(e);toast('Export impossible.');return}
+  db.markExported();toast('Sauvegarde exportée');render();
+}
+async function importBackup(input){
+  const f=input.files&&input.files[0];input.value='';
+  if(!f||!db)return;
+  let txt,info;
+  try{txt=await f.text()}catch(e){toast('Lecture du fichier impossible.');return}
+  try{info=db.inspectBackup(txt)}catch(e){toast(e.message||'Fichier invalide.');return}
+  const when=info.exportedAt?' du '+frDate(info.exportedAt):'';
+  const mName=k=>MOIS[+k.slice(5)-1]+' '+k.slice(0,4);
+  const msg=info.kind==='ajout'&&!info.months?'Importer les réglages de ce fichier ? Tes mois et tes équipements ne changent pas.'
+    :info.kind==='ajout'?`Ajouter ${info.months>1?info.months+' mois':'1 mois'} : ${info.keys.map(mName).join(', ')} ?`+(info.replaced.length?` ${info.replaced.map(mName).join(', ')} ${info.replaced.length>1?'sont déjà saisis et seront remplacés':'est déjà saisi et sera remplacé'}.`:' Le reste de tes données ne change pas.')
+    :`Remplacer les données actuelles par la sauvegarde${when} (${info.months} mois, ${info.parc} équipements) ?`;
+  if(!confirm(msg))return;
+  try{await db.importJSON(txt);S.scen=null;S.edit=null;S.confirmDel=null;toast('Sauvegarde importée')}catch(e){toast(e.code==='invalid_file'?e.message:errMsg(e))}
+}
+
+/* ---------- formulaires ---------- */
+const $=id=>document.getElementById(id);
+function fvals(){return {prod:num($('f-prod').value),usage:num($('f-usage').value),conso:num($('f-conso').value),reseau:num($('f-reseau').value)}}
+function fcalc(){
+  const out=$('fcheck');if(!out)return;
+  const v=fvals();
+  if([v.prod,v.usage,v.conso,v.reseau].some(isNaN)){out.textContent='';return}
+  const at=1-v.reseau/v.conso,ac=v.usage/v.prod,gap=Math.abs((v.conso-v.reseau)-v.usage);
+  let t=`Autoconsommation ${pc(ac,1)} · autosuffisance ${pc(at,1)} (à comparer avec les pourcentages de ton appli).`;
+  if(gap>0.02*v.conso)t+=` Écart de ${fmt(gap,1)} kWh entre « usage perso » et « consommation − réseau » : vérifie les chiffres.`;
+  out.textContent=t;
+}
+function fkey(){return keyOf(+$('f-y').value,+$('f-m').value)}
+function fillMonth(){
+  const cur=S.months[fkey()]||{};
+  ['prod','usage','conso','reseau'].forEach(k=>$('f-'+k).value=cur[k]!=null?String(cur[k]).replace('.',','):'');
+  $('f-note').value=cur.note||'';S.edit=fkey();S.confirmDel=null;fcalc();
+}
+
+document.addEventListener('click',async ev=>{
+  const b=ev.target.closest('[data-act]');if(!b||b.tagName==='SELECT'||b.type==='range')return;
+  const a=b.dataset.act;
+  if(a==='tab'){S.tab=b.dataset.tab;try{localStorage.setItem('ss-tab',S.tab)}catch(e){}window.scrollTo(0,0);render()}
+  else if(a==='range'){S.range=+b.dataset.v;render()}
+  else if(a==='mview'){S.mview=b.dataset.v;render()}
+  else if(a==='edit'){S.edit=b.dataset.key;S.tab='donnees';window.scrollTo(0,0);render()}
+  else if(a==='newmonth'){S.edit=keyOf(+b.dataset.y,+b.dataset.m);S.tab='donnees';window.scrollTo(0,0);render()}
+  else if(a==='scenreset'){S.scen=null;render()}
+  else if(a==='scensave'){
+    const s=scen(),ok=await put('settings/main',{...(S.settings.main||{}),...DEF,...(S.settings.main||{}),priceGrowth:s.priceGrowth,consoGrowth:s.consoGrowth,rachat:s.rachat});
+    if(ok)S.scen=null;
+  }
+  else if(a==='savemonth'){
+    const v=fvals();
+    if([v.prod,v.usage,v.conso,v.reseau].some(x=>isNaN(x)||x<0)){toast('Remplis les quatre chiffres.');return}
+    const y=+$('f-y').value,m=+$('f-m').value,k=keyOf(y,m);
+    const note=$('f-note').value.trim();
+    const doc={year:y,month:m,prod:v.prod,usage:v.usage,conso:v.conso,reseau:v.reseau};if(note)doc.note=note;
+    if(await put('months/'+k,doc)){S.edit=null;S.confirmDel=null;S.tab='accueil';render();window.scrollTo(0,0)}
+  }
+  else if(a==='delmonth'){
+    const k=fkey();
+    if(S.confirmDel!==k){S.confirmDel=k;b.textContent='Confirmer la suppression';return}
+    if(await del('months/'+k)){S.confirmDel=null;S.edit=null}
+  }
+  else if(a==='addeq'){
+    const id='p'+Date.now().toString(36);
+    await put('parc/'+id,{type:'Batterie',name:'Nouvel équipement',date:new Date().toISOString().slice(0,10),cap:5,unit:'kWh',deg:.02,cost:0});
+  }
+  else if(a==='saveeq'){
+    const id=b.dataset.id,g=k=>$('e-'+id+'-'+k).value;
+    const type=g('type'),cap=num(g('cap')),deg=num(g('deg')),cost=num(g('cost')||'0'),date=g('date');
+    if(isNaN(cap)||isNaN(deg)||!date){toast('Date, capacité et usure sont obligatoires.');return}
+    await put('parc/'+id,{type,name:g('name').trim(),date,cap,unit:type==='Batterie'?'kWh':'kWc',deg:deg/100,cost:isNaN(cost)?0:cost});
+  }
+  else if(a==='deleq'){
+    const id=b.dataset.id;
+    if(S.confirmDel!==id){S.confirmDel=id;b.textContent='Confirmer';return}
+    if(await del('parc/'+id))S.confirmDel=null;
+  }
+  else if(a==='recal'){
+    const l=last12(monthsList());
+    if(l.length<12){toast('Il faut 12 mois saisis.');return}
+    const kwc=parcList().filter(e=>e.type==='Panneaux').reduce((s,e)=>s+e.cap,0);
+    if(!kwc){toast('Aucun panneau dans les équipements.');return}
+    $('s-ratio').value=String(Math.round(l.reduce((s,m)=>s+m.prod,0)/kwc)).replace('.',',');
+    toast('Valeur calculée, pense à enregistrer.');
+  }
+  else if(a==='simpreset'){const s=sim();s.off={};s.extra=[];if(b.dataset.v==='nobat')simList().forEach(e=>{if(e.type==='Batterie')s.off[e.id]=true});render()}
+  else if(a==='simdel'){sim().extra.splice(+b.dataset.i,1);render()}
+  else if(a==='simadd'){
+    const type=$('sx-type').value,cap=num($('sx-cap').value),cost=num($('sx-cost').value||'0'),date=$('sx-date').value;
+    if(isNaN(cap)||cap<=0||!date){toast('Date et capacité sont obligatoires.');return}
+    const unit=type==='Batterie'?'kWh':'kWc';
+    sim().extra.push({id:'x'+Date.now().toString(36),type,date,cap,unit,deg:type==='Batterie'?.02:.005,cost:isNaN(cost)?0:cost,
+      name:(type==='Batterie'?'Batterie fictive ':'Panneaux fictifs ')+fmt(cap,2)+' '+unit});
+    render();
+  }
+  else if(a==='export')exportBackup();
+  else if(a==='swupdate'){
+    const w=swReg&&swReg.waiting;
+    b.disabled=true;
+    if(w){swReload=true;w.postMessage('skipWaiting')}else location.reload();
+  }
+  else if(a==='import')$('imp-file').click();
+  else if(a==='savecfg'){
+    const g=k=>num($('s-'+k).value),o={};
+    const keys=['ratio','tauxBase','bonus','plafond','startYear','prix','abo','rachat','priceGrowth','consoGrowth'];
+    const pcts=['tauxBase','bonus','plafond','priceGrowth','consoGrowth'];
+    for(const k of keys){const v=g(k);if(isNaN(v)){toast('Un champ n\'est pas un nombre.');return}o[k]=pcts.includes(k)?v/100:v}
+    if(await put('settings/main',o))S.scen=null;
+  }
+});
+document.addEventListener('input',ev=>{
+  const t=ev.target,a=t.dataset&&t.dataset.act;
+  if(a==='fcalc')fcalc();
+  else if(a==='scen'){
+    const s=scen(),k=t.dataset.k,v=+t.value;
+    s[k]=k==='rachat'?v/100:v/100;
+    const lab=$('sc-'+k+'-v');
+    if(lab)lab.textContent=k==='rachat'?fmt(v,0)+' c€/kWh':'+'+fmt(v,1)+' %';
+    clearTimeout(window.__st);window.__st=setTimeout(()=>{updateResults();const b=document.querySelector('[data-act=scensave]');if(b)b.disabled=JSON.stringify(s)===JSON.stringify({priceGrowth:cfg().priceGrowth,consoGrowth:cfg().consoGrowth,rachat:cfg().rachat})},120);
+  }
+});
+document.addEventListener('change',ev=>{
+  if(ev.target.dataset&&ev.target.dataset.act==='fsel')fillMonth();
+  else if(ev.target.id==='imp-file')importBackup(ev.target);
+  else if(ev.target.dataset&&ev.target.dataset.act==='simtoggle'){sim().off[ev.target.dataset.id]=!ev.target.checked;render()}
+});
+
+/* thème : redessine les graphiques quand le thème change */
+try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>schedule())}catch(e){}
+new MutationObserver(()=>schedule()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+/* ---------- démarrage ---------- */
+async function boot(){
+  render();
+  try{db=await SolarStore.open()}catch(e){console.error(e);db=null}
+  if(!db){S.err='nodb';render();return}
+  const sub=(col,key)=>db.collection(col).onSnapshot(snap=>{
+    const o={};snap.docs.forEach(d=>{o[d.id]=d.data()});S[key]=o;S.loaded[key]=true;schedule();
+  },e=>{S.err=(e&&e.code)||'unavailable';schedule()});
+  sub('months','months');sub('parc','parc');sub('settings','settings');
+}
+boot();
+
+/* ---------- mise à jour de l'appli ----------
+   La nouvelle version attend dans le service worker ; un bandeau propose de l'activer. */
+let swReg=null,swReload=false;
+function showUpdate(){
+  if(document.getElementById('upd'))return;
+  const d=document.createElement('div');d.id='upd';d.setAttribute('role','status');
+  d.innerHTML='<span>Nouvelle version disponible.</span><button class="btn small primary" data-act="swupdate">Mettre à jour</button>';
+  document.body.appendChild(d);
+}
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(swReload)location.reload()});
+  addEventListener('load',async()=>{
+    try{
+      swReg=await navigator.serviceWorker.register('sw.js');
+      const watch=w=>{if(w)w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)showUpdate()})};
+      if(swReg.waiting&&navigator.serviceWorker.controller)showUpdate();
+      watch(swReg.installing);
+      swReg.addEventListener('updatefound',()=>watch(swReg.installing));
+      /* l'appli reste souvent ouverte en arrière-plan sur iPhone : vérifier au retour, au plus toutes les 15 min */
+      let last=Date.now();
+      document.addEventListener('visibilitychange',()=>{
+        if(document.visibilityState==='visible'&&Date.now()-last>15*60e3){last=Date.now();swReg.update().catch(()=>{})}
+      });
+    }catch(e){console.error(e)}
+  });
+}
+</script>
+</body>
+</html>

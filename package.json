@@ -1,0 +1,15 @@
+{
+  "name": "suivi-solaire",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Suivi de production solaire, projection et rentabilité (PWA hors ligne).",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test",
+    "vendor": "node -e \"require('fs').copyFileSync('node_modules/chart.js/dist/chart.umd.js','vendor/chart.umd.min.js')\"",
+    "icons": "node scripts/make-icons.js"
+  },
+  "devDependencies": {
+    "chart.js": "4.4.1"
+  }
+}
