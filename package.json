@@ -6,10 +6,11 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --test",
-    "vendor": "node -e \"require('fs').copyFileSync('node_modules/chart.js/dist/chart.umd.js','vendor/chart.umd.min.js')\"",
+    "vendor": "node -e \"const f=require('fs');f.copyFileSync('node_modules/chart.js/dist/chart.umd.js','vendor/chart.umd.min.js');f.copyFileSync('node_modules/@supabase/supabase-js/dist/umd/supabase.js','vendor/supabase.js')\"",
     "icons": "node scripts/make-icons.js"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "2.117.2",
     "chart.js": "4.4.1"
   }
 }

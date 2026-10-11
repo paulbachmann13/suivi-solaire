@@ -1,0 +1,39 @@
+# Garde le projet Supabase actif (l'offre gratuite le met en pause après ~7 jours sans activité)
+# et garde le dépôt actif (GitHub coupe les tâches planifiées après 60 jours sans commit).
+name: Maintien Supabase
+
+on:
+  schedule:
+    - cron: '17 6 */3 * *'   # tous les 3 jours, 6 h 17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appel de public.ping()
+        env:
+          SUPABASE_URL: https://flbvyamkrxrghdxexnzf.supabase.co
+          SUPABASE_KEY: sb_publishable_LBMkOe4NjazsouB7OdUzmA_i9giWBCG
+        run: |
+          code=$(curl -s -o /tmp/ping.txt -w '%{http_code}' -X POST "$SUPABASE_URL/rest/v1/rpc/ping" \
+            -H "apikey: $SUPABASE_KEY" -H "Content-Type: application/json" -d '{}')
+          echo "HTTP $code : $(cat /tmp/ping.txt)"
+          test "$code" = 200
+
+      - uses: actions/checkout@v4
+
+      - name: Un commit par mois au plus pour garder le dépôt actif
+        run: |
+          last=$(git log -1 --format=%ct); now=$(date +%s)
+          if [ $((now - last)) -gt $((30 * 86400)) ]; then
+            date -u +%F > .keepalive
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .keepalive
+            git commit -m "Maintien : dépôt actif"
+            git push
+          fi

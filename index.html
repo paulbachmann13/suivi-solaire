@@ -19,6 +19,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Hanken+Grotesk:wght@400;500;600&display=swap">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="store.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="sync.js"></script>
 <script src="model.js"></script>
 <style>
 /* Concept : tableau de bord d'installation, une colonne, barre d'onglets en bas.
@@ -141,7 +143,7 @@ nav button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-spac
 
 <script>
 /* Version affichée dans l'appli : doit rester égale à CACHE_VERSION dans sw.js (vérifié par les tests). */
-const APP_VERSION='v6';
+const APP_VERSION='v7';
 
 /* ---------- utilitaires ---------- */
 const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -272,7 +274,7 @@ const TABS=[['accueil','Accueil'],['mois','Mois'],['projection','Projection'],['
 
 function emptyState(){
   if(S.err==='nodb'||S.err==='not_granted')return `<div class="card empty"><h2>Données indisponibles</h2><p>Le stockage du navigateur n'est pas accessible. Quitte la navigation privée, puis recharge l'appli.</p></div>`;
-  return `<div class="card empty"><h2>Aucun mois saisi</h2><p>Ajoute les quatre chiffres de ton appli solaire pour voir tes courbes.</p><button class="btn primary" data-act="tab" data-tab="donnees">Saisir un mois</button></div>`;
+  return `<div class="card empty"><h2>Aucun mois saisi</h2><p>Ajoute les quatre chiffres de ton appli solaire pour voir tes courbes${syncOn()&&!S.user?', ou connecte-toi dans Données pour récupérer tes données':''}.</p><button class="btn primary" data-act="tab" data-tab="donnees">Saisir un mois</button></div>`;
 }
 function installInfo(){
   const today=new Date().toISOString().slice(0,10);
@@ -579,6 +581,7 @@ function vDonnees(){
     ${setField('priceGrowth','Évolution du prix (%/an)',c.priceGrowth,'',true)}
     ${setField('consoGrowth','Évolution de la conso (%/an)',c.consoGrowth,'',true)}</div>
     <button class="btn primary" data-act="savecfg">Enregistrer les hypothèses</button></section>`;
+  h+=syncCard();
   h+=`<section class="card"><h2>Sauvegarde</h2>
     <p class="sub">Tes données sont enregistrées sur ce téléphone uniquement. ${backupLine()}</p>
     ${backupDue()?`<div class="note">Aucune sauvegarde depuis plus de ${BACKUP_DAYS} jours. iOS peut vider le stockage d'une appli peu utilisée : exporte un fichier et range-le dans Fichiers ou iCloud Drive.</div>`:''}
@@ -632,7 +635,7 @@ const BACKUP_DAYS=30;
 const daysSince=iso=>iso?(Date.now()-Date.parse(iso))/86400000:Infinity;
 const frDate=iso=>new Date(iso).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
 function backupDue(){
-  if(!db)return false;
+  if(!db||S.user)return false;
   const b=db.backupInfo();
   return daysSince(b.last||b.since)>BACKUP_DAYS;
 }
@@ -747,6 +750,18 @@ document.addEventListener('click',async ev=>{
       name:(type==='Batterie'?'Batterie fictive ':'Panneaux fictifs ')+fmt(cap,2)+' '+unit});
     render();
   }
+  else if(a==='login'||a==='signup'){
+    const email=$('au-email').value.trim(),pw=$('au-pw').value;
+    if(!email||!pw){toast("Remplis l'e-mail et le mot de passe.");return}
+    b.disabled=true;
+    try{
+      if(a==='login'){await SolarSync.signIn(email,pw);toast('Connecté, synchronisation…')}
+      else{const r=await SolarSync.signUp(email,pw);toast(r&&r.session?'Compte créé, synchronisation…':'Compte créé : clique le lien reçu par e-mail, puis connecte-toi.')}
+    }catch(e){toast(SolarSync.authMessage(e))}
+    b.disabled=false;
+  }
+  else if(a==='logout'){await SolarSync.signOut();toast('Déconnecté. Tes données restent sur cet appareil.')}
+  else if(a==='syncnow'){await db.sync();const s=db.syncStatus();toast(s.state==='ok'?'Synchronisé':syncLine())}
   else if(a==='export')exportBackup();
   else if(a==='swupdate'||a==='refresh')refreshApp(b);
   else if(a==='import')$('imp-file').click();
@@ -779,6 +794,43 @@ document.addEventListener('change',ev=>{
 try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>schedule())}catch(e){}
 new MutationObserver(()=>schedule()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 
+/* ---------- synchronisation entre appareils (Supabase) ---------- */
+const syncOn=()=>!!(window.SolarSync&&SolarSync.available());
+function syncLine(){
+  const s=S.sync||{},p=s.pending||0,att=p?' · '+p+' modification'+(p>1?'s':'')+' en attente':'';
+  if(s.state==='syncing')return 'Synchronisation…';
+  if(s.state==='ok')return 'Synchronisé à '+new Date(s.at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+att+'.';
+  if(s.state==='offline')return 'Hors ligne'+att+' : envoi au retour du réseau.';
+  if(s.state==='error')return "Synchronisation impossible pour l'instant"+att+". Nouvel essai au prochain retour dans l'appli.";
+  return '';
+}
+function syncCard(){
+  if(!syncOn())return '';
+  if(S.user)return `<section class="card"><h2>Synchronisation</h2>
+    <p class="sub">Connecté avec <b style="color:var(--ink)">${esc(S.user.email)}</b>. Tes données se synchronisent entre tes appareils.</p>
+    <p class="sub" id="sync-status" role="status">${esc(syncLine())}</p>
+    <div class="row2"><button class="btn primary" data-act="syncnow">Synchroniser maintenant</button><button class="btn" data-act="logout">Se déconnecter</button></div></section>`;
+  return `<section class="card"><h2>Synchronisation</h2>
+    <p class="sub">Connecte-toi pour retrouver tes données sur l'iPhone et l'iPad. Sans connexion, elles restent seulement sur cet appareil.</p>
+    <div class="field"><label for="au-email">E-mail</label><input id="au-email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false"></div>
+    <div class="field"><label for="au-pw">Mot de passe</label><input id="au-pw" type="password" autocomplete="current-password"><small>6 caractères minimum.</small></div>
+    <div class="row2"><button class="btn primary" data-act="login">Se connecter</button><button class="btn" data-act="signup">Créer mon compte</button></div></section>`;
+}
+function startSync(){
+  if(!syncOn())return;
+  db.onSync(st=>{S.sync=st;const el=$('sync-status');if(el)el.textContent=syncLine()});
+  SolarSync.onAuth(user=>{
+    const was=S.user&&S.user.id,now=user&&user.id;
+    S.user=user;
+    if(was!==now){if(user)db.attachRemote(SolarSync.adapter(user.id),user.id);else db.detachRemote();schedule()}
+  });
+  addEventListener('online',()=>{if(S.user)db.sync()});
+  let last=Date.now();
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible'&&S.user&&Date.now()-last>30e3){last=Date.now();db.sync()}
+  });
+}
+
 /* ---------- démarrage ---------- */
 async function boot(){
   render();
@@ -788,6 +840,7 @@ async function boot(){
     const o={};snap.docs.forEach(d=>{o[d.id]=d.data()});S[key]=o;S.loaded[key]=true;schedule();
   },e=>{S.err=(e&&e.code)||'unavailable';schedule()});
   sub('months','months');sub('parc','parc');sub('settings','settings');
+  startSync();
 }
 boot();
 

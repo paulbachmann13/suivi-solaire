@@ -3,9 +3,12 @@
      db.collection(nom).onSnapshot(cb, errCb)   cb({docs:[{id, data()}]})
      db.doc('col/id').set(data) / .delete()      promesses
    Les données vivent dans localStorage (clé ss-data). Au premier lancement,
-   si rien n'est stocké, seed.json est chargé. */
+   si rien n'est stocké, seed.json est chargé.
+   Synchronisation (facultative) : db.attachRemote(remote, uid) branche un stockage distant
+   ({list, upsert, remove, subscribe}). L'appli lit toujours la copie locale ; chaque
+   modification part dans une file (ss-queue) envoyée dès que le réseau le permet. */
 (function(root){
-const KEY='ss-data',KEY_EXPORT='ss-last-export',KEY_FIRST='ss-first-run';
+const KEY='ss-data',KEY_EXPORT='ss-last-export',KEY_FIRST='ss-first-run',KEY_QUEUE='ss-queue',KEY_SYNCED='ss-synced';
 const COLS=['months','parc','settings'];
 const clone=o=>JSON.parse(JSON.stringify(o));
 const isObj=o=>o!=null&&typeof o==='object'&&!Array.isArray(o);
@@ -58,6 +61,61 @@ function createStore(storage,loadSeed){
   const now=()=>new Date().toISOString();
   const safeGet=k=>{try{return storage.getItem(k)}catch(e){return null}};
 
+  /* ---- synchronisation ---- */
+  let remote=null,remoteUid=null,unsub=null,running=null,rerun=false,timer=0;
+  let queue=(()=>{try{return JSON.parse(storage.getItem(KEY_QUEUE)||'[]')}catch(e){return []}})();
+  let status={state:'off',at:null,pending:queue.length,error:null};const statusSubs=[];
+  const saveQueue=()=>{try{storage.setItem(KEY_QUEUE,JSON.stringify(queue))}catch(e){}};
+  const setStatus=s=>{status={...status,...s,pending:queue.length};statusSubs.forEach(cb=>{try{cb(status)}catch(e){console.error(e)}})};
+  /* on garde les modifications pour l'envoi dès qu'un compte est branché, ou l'a déjà été sur cet appareil */
+  const tracking=()=>!!remote||!!safeGet(KEY_SYNCED);
+  function enqueue(ops){
+    if(!tracking()||!ops.length)return;
+    for(const o of ops){queue=queue.filter(q=>!(q.col===o.col&&q.id===o.id));queue.push({col:o.col,id:o.id,data:o.data==null?null:clone(o.data)})}
+    saveQueue();setStatus({});
+    if(remote){clearTimeout(timer);timer=setTimeout(()=>db.sync(),300)}
+  }
+  function applyRemote(ev){
+    if(!ev||!COLS.includes(ev.col)||queue.some(q=>q.col===ev.col&&q.id===ev.id))return;
+    const c={...data[ev.col]};
+    if(ev.type==='delete'){if(!(ev.id in c))return;delete c[ev.id]}
+    else{if(JSON.stringify(c[ev.id])===JSON.stringify(ev.data))return;c[ev.id]=clone(ev.data)}
+    try{write({...data,[ev.col]:c})}catch(e){return}
+    emit(ev.col);
+  }
+  async function doSync(){
+    if(!remote)return;
+    const r=remote,uid=remoteUid;
+    setStatus({state:'syncing',error:null});
+    try{
+      /* 1. envoyer les modifications en attente */
+      const ops=queue.slice(),ups=ops.filter(o=>o.data!=null),dels=ops.filter(o=>o.data==null);
+      if(ups.length)await r.upsert(ups.map(o=>({col:o.col,id:o.id,data:o.data})));
+      for(const o of dels)await r.remove(o.col,o.id);
+      queue=queue.filter(q=>!ops.includes(q));saveQueue();
+      /* 2. reprendre l'état distant (il fait foi) */
+      const rows=await r.list();
+      if(r!==remote)return;
+      const next={months:{},parc:{},settings:{}};
+      rows.forEach(x=>{if(next[x.col])next[x.col][x.id]=x.data});
+      if(safeGet(KEY_SYNCED)!==uid){
+        /* première synchro de ce compte sur cet appareil : ce qui n'existe qu'ici est envoyé, rien n'est perdu */
+        const extra=[];
+        COLS.forEach(c=>Object.entries(data[c]).forEach(([id,d])=>{if(!(id in next[c])){next[c][id]=clone(d);extra.push({col:c,id,data:d})}}));
+        if(extra.length)await r.upsert(extra);
+      }
+      queue.forEach(q=>{if(q.data==null)delete next[q.col][q.id];else next[q.col][q.id]=q.data});
+      const changed=COLS.filter(c=>JSON.stringify(next[c])!==JSON.stringify(data[c]));
+      write(next);
+      storage.setItem(KEY_SYNCED,uid);
+      changed.forEach(emit);
+      setStatus({state:'ok',at:now()});
+    }catch(e){
+      const off=typeof navigator!=='undefined'&&navigator.onLine===false;
+      setStatus({state:off?'offline':'error',error:(e&&e.message)||String(e)});
+    }
+  }
+
   const db={
     async init(){
       let stored=null;
@@ -74,8 +132,8 @@ function createStore(storage,loadSeed){
       return ()=>{subs[col]=subs[col].filter(x=>x!==s)};
     }}},
     doc(path){return {
-      async set(doc){const [col,id]=split(path);write({...data,[col]:{...data[col],[id]:clone(doc)}});emit(col)},
-      async delete(){const [col,id]=split(path);const c={...data[col]};delete c[id];write({...data,[col]:c});emit(col)}
+      async set(doc){const [col,id]=split(path);write({...data,[col]:{...data[col],[id]:clone(doc)}});emit(col);enqueue([{col,id,data:doc}])},
+      async delete(){const [col,id]=split(path);const c={...data[col]};delete c[id];write({...data,[col]:c});emit(col);enqueue([{col,id,data:null}])}
     }},
     /* rechargement depuis le stockage (modification dans un autre onglet) */
     reload(){try{const d=read();if(d){data=d;COLS.forEach(emit)}}catch(e){console.error(e)}},
@@ -85,13 +143,41 @@ function createStore(storage,loadSeed){
       return {kind:b.kind,months:keys.length,keys,replaced:keys.filter(k=>k in data.months),parc:b.parc?Object.keys(b.parc).length:0,exportedAt:b.exportedAt};
     },
     async importJSON(text){
-      const b=parseFile(text);
-      if(b.kind==='ajout')write({...data,months:{...data.months,...b.months},settings:{...data.settings,...b.settings}});
-      else write(b);
+      const b=parseFile(text),before=data,ops=[];
+      if(b.kind==='ajout'){
+        write({...data,months:{...data.months,...b.months},settings:{...data.settings,...b.settings}});
+        ['months','settings'].forEach(c=>Object.entries(b[c]).forEach(([id,d])=>ops.push({col:c,id,data:d})));
+      }else{
+        write(b);
+        COLS.forEach(c=>{
+          Object.keys(before[c]).forEach(id=>{if(!(id in b[c]))ops.push({col:c,id,data:null})});
+          Object.entries(b[c]).forEach(([id,d])=>ops.push({col:c,id,data:d}));
+        });
+      }
       COLS.forEach(emit);
+      enqueue(ops);
     },
     markExported(){try{storage.setItem(KEY_EXPORT,now())}catch(e){}},
-    backupInfo(){return {last:safeGet(KEY_EXPORT),since:safeGet(KEY_FIRST)}}
+    backupInfo(){return {last:safeGet(KEY_EXPORT),since:safeGet(KEY_FIRST)}},
+
+    attachRemote(r,uid){
+      db.detachRemote();
+      remote=r;remoteUid=uid;
+      unsub=r.subscribe?r.subscribe(applyRemote):null;
+      return db.sync();
+    },
+    detachRemote(){
+      if(unsub)try{unsub()}catch(e){}
+      unsub=null;remote=null;remoteUid=null;clearTimeout(timer);
+      setStatus({state:'off',error:null});
+    },
+    sync(){
+      if(running){rerun=true;return running}
+      running=doSync().finally(()=>{running=null;if(rerun){rerun=false;db.sync()}});
+      return running;
+    },
+    onSync(cb){statusSubs.push(cb);cb(status);return ()=>{const i=statusSubs.indexOf(cb);if(i>=0)statusSubs.splice(i,1)}},
+    syncStatus(){return status}
   };
   return db;
 }
