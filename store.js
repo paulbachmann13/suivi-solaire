@@ -36,14 +36,16 @@ function parseBackup(input){
 }
 
 /* Fichier à importer : sauvegarde complète (remplace tout) ou ajout de mois
-   ({type:'ajout-mois', months:{...}, settings?:{...}} : complète sans rien effacer). */
+   ({type:'ajout-mois', months:{...}, parc?:{...}, settings?:{...}} : ajoute ou remplace
+   ces documents-là, sans rien effacer). */
 function parseFile(input){
   const o=toObj(input);
   if(!isObj(o)||o.type!=='ajout-mois')return parseBackup(o);
   if(!isObj(o.months))throw fail('invalid_file','Fichier d\'ajout sans mois.');
   checkMonths(o.months);
   if(o.settings!=null&&!isObj(o.settings))throw fail('invalid_file','Réglages invalides dans le fichier.');
-  return {kind:'ajout',months:clone(o.months),settings:clone(o.settings||{}),exportedAt:typeof o.exportedAt==='string'?o.exportedAt:null};
+  if(o.parc!=null&&(!isObj(o.parc)||!Object.values(o.parc).every(isObj)))throw fail('invalid_file','Équipements invalides dans le fichier.');
+  return {kind:'ajout',months:clone(o.months),parc:clone(o.parc||{}),settings:clone(o.settings||{}),exportedAt:typeof o.exportedAt==='string'?o.exportedAt:null};
 }
 
 function createStore(storage,loadSeed){
@@ -140,13 +142,14 @@ function createStore(storage,loadSeed){
     exportJSON(){return JSON.stringify({app:'suivi-solaire',format:1,exportedAt:now(),months:data.months,parc:data.parc,settings:data.settings},null,1)},
     inspectBackup(text){
       const b=parseFile(text),keys=Object.keys(b.months).sort();
-      return {kind:b.kind,months:keys.length,keys,replaced:keys.filter(k=>k in data.months),parc:b.parc?Object.keys(b.parc).length:0,exportedAt:b.exportedAt};
+      const n=o=>o?Object.keys(o).length:0;
+      return {kind:b.kind,months:keys.length,keys,replaced:keys.filter(k=>k in data.months),parc:n(b.parc),parcN:b.kind==='ajout'?n(b.parc):0,settingsN:b.kind==='ajout'?n(b.settings):0,exportedAt:b.exportedAt};
     },
     async importJSON(text){
       const b=parseFile(text),before=data,ops=[];
       if(b.kind==='ajout'){
-        write({...data,months:{...data.months,...b.months},settings:{...data.settings,...b.settings}});
-        ['months','settings'].forEach(c=>Object.entries(b[c]).forEach(([id,d])=>ops.push({col:c,id,data:d})));
+        write({...data,months:{...data.months,...b.months},parc:{...data.parc,...b.parc},settings:{...data.settings,...b.settings}});
+        COLS.forEach(c=>Object.entries(b[c]).forEach(([id,d])=>ops.push({col:c,id,data:d})));
       }else{
         write(b);
         COLS.forEach(c=>{

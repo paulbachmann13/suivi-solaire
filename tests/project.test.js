@@ -1,13 +1,14 @@
 // Valeurs de référence du classeur Suivi_energie.xlsx.
-// Les données personnelles ne sont pas dans le dépôt : ces tests lisent la sauvegarde
-// privée prive/suivi-solaire-donnees.json et sont ignorés si elle est absente.
+// Les données personnelles ne sont pas dans le dépôt : ces tests lisent l'instantané privé
+// prive/reference-classeur.json (données telles que dans le classeur, panneaux au 01/07/2025)
+// et sont ignorés s'il est absent.
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('fs'),path=require('path');
 const {project}=require('../model.js');
 
-const file=path.join(__dirname,'..','prive','suivi-solaire-donnees.json');
+const file=path.join(__dirname,'..','prive','reference-classeur.json');
 const data=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):null;
-const skip=data?false:'sauvegarde privée absente (prive/suivi-solaire-donnees.json)';
+const skip=data?false:'instantané privé absent (prive/reference-classeur.json)';
 
 // Mêmes entrées que runProject() dans index.html : équipements triés par date,
 // consommation de base = somme des 12 mois du classeur (juillet 2025 à juin 2026).

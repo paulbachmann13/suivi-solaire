@@ -75,6 +75,19 @@ test('un fichier d\'ajout complète les mois sans rien effacer',async()=>{
   assert.equal(settings.main.ratio,1300);
 });
 
+test("un fichier d'ajout peut aussi corriger un équipement",async()=>{
+  const db=await createStore(memoryStorage(),async()=>seed).init();
+  const add=JSON.stringify({type:'ajout-mois',months:{},parc:{p1:{...seed.parc.p1,date:'2025-04-24'}},settings:{pre:{months:{'2025-04':200}}}});
+  const info=db.inspectBackup(add);
+  assert.equal(info.parcN,1);
+  assert.equal(info.settingsN,1);
+  await db.importJSON(add);
+  const parc=asObj(await snapshot(db,'parc'));
+  assert.equal(parc.p1.date,'2025-04-24');
+  assert.equal(parc.p2.date,'2026-01-01');
+  assert.equal((await snapshot(db,'months')).docs.length,N);
+});
+
 test('refuse un fichier qui n\'est pas une sauvegarde',async()=>{
   const db=await createStore(memoryStorage(),async()=>seed).init();
   await assert.rejects(db.importJSON('{"foo":1}'),{code:'invalid_file'});

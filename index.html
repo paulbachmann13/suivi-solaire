@@ -143,7 +143,7 @@ nav button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-spac
 
 <script>
 /* Version affichée dans l'appli : doit rester égale à CACHE_VERSION dans sw.js (vérifié par les tests). */
-const APP_VERSION='v7';
+const APP_VERSION='v8';
 
 /* ---------- utilitaires ---------- */
 const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -296,6 +296,20 @@ function missingMonths(ml){
 function measuredSavings(ml){
   const c=cfg();return ml.reduce((a,m)=>a+m.usage*c.prix+Math.max(0,m.prod-m.usage)*c.rachat,0);
 }
+/* Production d'avant la mesure de la consommation (settings/pre : {months:{'2025-04':kWh,...}}).
+   Sans destination connue, l'économie est estimée au taux d'autoconsommation sans batterie. */
+function preInfo(){
+  const p=S.settings.pre,m=p&&p.months;
+  if(!m||typeof m!=='object')return null;
+  const keys=Object.keys(m).sort();if(!keys.length)return null;
+  const kwh=keys.reduce((a,k)=>a+(+m[k]||0),0),c=cfg();
+  const nm=k=>MOIS[+k.slice(5)-1];
+  return {keys,kwh,eur:kwh*c.tauxBase*c.prix,from:keys[0],
+    span:nm(keys[0])+(keys.length>1?' à '+nm(keys[keys.length-1]):'')+' '+keys[keys.length-1].slice(0,4)};
+}
+function preNote(pre){
+  return ` Dont ${eur(pre.eur)} estimés pour ${pre.span} (${fmt(pre.kwh)} kWh produits avant la mesure de la consommation, comptés à ${pc(cfg().tauxBase)} d'autoconsommation).`;
+}
 
 function vAccueil(){
   const ml=monthsList(),inst=installInfo();
@@ -328,12 +342,13 @@ function vAccueil(){
   const achat=l.reduce((a,m)=>a+m.reseau*cfg().prix,0),abo=l.length*cfg().abo;
   h+=`<section class="card"><span class="label">Coût net estimé, ${l.length} mois</span><div class="mid">${eur(achat+abo)}</div>
     <p class="sub">${eur(achat)} d'électricité achetée au réseau (${fmt(reseau)} kWh à ${fmt(cfg().prix*100,2)} c€/kWh) et ${eur(abo)} d'abonnement.</p></section>`;
-  const saved=measuredSavings(ml);
+  const pre=preInfo(),saved=measuredSavings(ml)+(pre?pre.eur:0);
+  const since=pre&&pre.from<ml[0].key?pre.from:ml[0].key;
   if(inst.cost>0){
     const p=Math.min(1,saved/inst.cost);
     h+=`<section class="card"><span class="label">Investissement récupéré</span>
       <div class="bar" role="img" aria-label="${pc(p)} récupéré"><i style="width:${(p*100).toFixed(1)}%"></i></div>
-      <p class="sub"><b style="color:var(--ink)">${eur(saved)}</b> d'électricité solaire consommée depuis ${MOIS[ml[0].month]} ${ml[0].year}, sur ${eur(inst.cost)} investis (${pc(p,1)}).</p>
+      <p class="sub"><b style="color:var(--ink)">${eur(saved)}</b> d'électricité solaire consommée depuis ${MOIS[+since.slice(5)-1]} ${since.slice(0,4)}, sur ${eur(inst.cost)} investis (${pc(p,1)}).${pre?preNote(pre):''}</p>
       <button class="btn small" data-act="tab" data-tab="rentabilite" style="align-self:flex-start">Voir la rentabilité</button></section>`;
   }
   const lm=ml[ml.length-1];
@@ -374,6 +389,8 @@ function vMois(){
     {yfmt:v=>fmt(v)+' %',ymax:100,points:true,marks}));
   h+=chartCard('c-ct','Coût net estimé (€ par mois)',null,()=>bars(labs,[
     {label:'Coût net',data:list.map(m=>+m.cout.toFixed(2)),color:'--c-conso'}],{yfmt:v=>fmt(v)+' €',tipfmt:v=>fmt(v,2)+' €',marks}));
+  const pre=preInfo();
+  if(pre&&S.range!==12)h+=`<div class="note info">Avant ces graphiques : ${fmt(pre.kwh)} kWh produits ${/^[aeiouéè]/i.test(pre.span)?"d'":"de "}${esc(pre.span)}. La consommation n'était pas encore mesurée, ces mois ne sont donc pas tracés.</div>`;
   h+=`<p class="sub">Les barres de production et de consommation montrent surtout la saison. Compare un mois à son équivalent de l'année précédente, pas à son voisin.</p>`;
   return h;
 }
@@ -419,7 +436,7 @@ function roiResults(){
   const ml=monthsList();
   if(!ml.length||!Object.keys(S.parc).length)return emptyState();
   const c=scenarioCfg(),p=runProject(),rows=p.rows,labs=rows.map(r=>String(r.y));
-  const end=rows[rows.length-1],inst=installInfo(),saved=measuredSavings(ml);
+  const end=rows[rows.length-1],inst=installInfo(),pre=preInfo(),saved=measuredSavings(ml)+(pre?pre.eur:0);
   const yrs=(y,first)=>y&&first?` (${y-first} ans)`:'';
   let h=`<div class="tiles">
     <div class="tile"><span class="label">Investissement</span><span class="mid">${eur(p.costAll)}</span><span class="hint">panneaux ${eur(p.costP)} · batteries ${eur(p.costB)}</span></div>
@@ -435,7 +452,7 @@ function roiResults(){
   if(inst.cost>0){
     const pr=Math.min(1,saved/inst.cost),l=last12(ml),s12=measuredSavings(l);
     h+=`<section class="card"><h3>Mesuré à ce jour</h3><div class="bar"><i style="width:${(pr*100).toFixed(1)}%"></i></div>
-      <p class="sub"><b style="color:var(--ink)">${eur(saved)}</b> récupérés sur ${eur(inst.cost)} d'équipements installés (${pc(pr,1)}). Sur les ${l.length} derniers mois : ${eur(s12)}. Chaque kWh solaire consommé sur place est compté au prix moyen de ${fmt(c.prix*100,2)} c€/kWh.</p></section>`;
+      <p class="sub"><b style="color:var(--ink)">${eur(saved)}</b> récupérés sur ${eur(inst.cost)} d'équipements installés (${pc(pr,1)}). Sur les ${l.length} derniers mois : ${eur(s12)}. Chaque kWh solaire consommé sur place est compté au prix moyen de ${fmt(c.prix*100,2)} c€/kWh.${pre?preNote(pre):''}</p></section>`;
   }
   const j=jours(cfg(),p),tk=tempoKwh();
   h+=`<section class="card"><h3>Jours rouges Tempo</h3>
@@ -665,7 +682,14 @@ async function importBackup(input){
   try{info=db.inspectBackup(txt)}catch(e){toast(e.message||'Fichier invalide.');return}
   const when=info.exportedAt?' du '+frDate(info.exportedAt):'';
   const mName=k=>MOIS[+k.slice(5)-1]+' '+k.slice(0,4);
-  const msg=info.kind==='ajout'&&!info.months?'Importer les réglages de ce fichier ? Tes mois et tes équipements ne changent pas.'
+  const parts=[];
+  if(info.kind==='ajout'){
+    if(info.months)parts.push(`ajouter ou corriger ${info.months>1?info.months+' mois':'1 mois'} (${info.keys.map(mName).join(', ')})`);
+    if(info.parcN)parts.push(`mettre à jour ${info.parcN>1?info.parcN+' équipements':'1 équipement'}`);
+    if(info.settingsN)parts.push(`mettre à jour ${info.settingsN>1?info.settingsN+' réglages':'1 réglage'}`);
+  }
+  const msg=info.kind==='ajout'&&(info.parcN||info.settingsN)?'Ce fichier va '+parts.join(', ')+'. Le reste de tes données ne change pas. Continuer ?'
+    :info.kind==='ajout'&&!info.months?'Ce fichier ne contient rien à importer.'
     :info.kind==='ajout'?`Ajouter ${info.months>1?info.months+' mois':'1 mois'} : ${info.keys.map(mName).join(', ')} ?`+(info.replaced.length?` ${info.replaced.map(mName).join(', ')} ${info.replaced.length>1?'sont déjà saisis et seront remplacés':'est déjà saisi et sera remplacé'}.`:' Le reste de tes données ne change pas.')
     :`Remplacer les données actuelles par la sauvegarde${when} (${info.months} mois, ${info.parc} équipements) ?`;
   if(!confirm(msg))return;
