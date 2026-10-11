@@ -59,6 +59,8 @@ p{margin:0}
 .iconbtn{flex:none;width:44px;height:44px;border:1px solid var(--hair);background:var(--surface);color:var(--ink2);border-radius:12px;display:grid;place-items:center;cursor:pointer}
 .iconbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .iconbtn:disabled{opacity:.5}
+.headtools{display:flex;align-items:center;gap:8px;flex:none}
+.ver{font-size:12px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
 .sub{color:var(--ink2);font-size:13px}
 .muted{color:var(--muted)}
 .card{background:var(--surface);border:1px solid var(--hair);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
@@ -143,7 +145,7 @@ nav button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-spac
 
 <script>
 /* Version affichée dans l'appli : doit rester égale à CACHE_VERSION dans sw.js (vérifié par les tests). */
-const APP_VERSION='v8';
+const APP_VERSION='v9';
 
 /* ---------- utilitaires ---------- */
 const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -314,7 +316,7 @@ function preNote(pre){
 function vAccueil(){
   const ml=monthsList(),inst=installInfo();
   const head=`<div class="headrow"><div class="head"><h1>Suivi solaire</h1><p class="sub">${inst.kwc?fmt(inst.kwc,1)+' kWc':'Panneaux'}${inst.kwh?' · batterie '+fmt(inst.kwh,2)+' kWh':''}</p></div>
-    <button class="iconbtn" data-act="refresh" aria-label="Actualiser l'appli" title="Actualiser l'appli">${ICONS.refresh}</button></div>`;
+    <div class="headtools"><span class="ver" aria-label="Version ${APP_VERSION}">${APP_VERSION}</span><button class="iconbtn" data-act="refresh" aria-label="Actualiser l'appli" title="Actualiser l'appli">${ICONS.refresh}</button></div></div>`;
   if(!ml.length)return head+emptyState();
   const l=last12(ml),sum=k=>l.reduce((a,m)=>a+m[k],0);
   const prod=sum('prod'),usage=sum('usage'),conso=sum('conso'),reseau=sum('reseau');
