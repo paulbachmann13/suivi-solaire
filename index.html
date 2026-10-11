@@ -60,6 +60,17 @@ p{margin:0}
 .iconbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .iconbtn:disabled{opacity:.5}
 .headtools{display:flex;align-items:center;gap:8px;flex:none}
+.linkbtn{align-self:flex-start;border:0;background:none;color:var(--accent);font:inherit;font-size:13px;font-weight:600;padding:6px 0;min-height:32px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+details.help{border-top:1px solid var(--hair)}
+details.help:first-of-type{border-top:0}
+details.help summary{cursor:pointer;font-family:var(--f-display);font-weight:700;font-size:16px;padding:14px 0;min-height:48px;display:flex;align-items:center}
+details.help .hbody{display:flex;flex-direction:column;gap:10px;padding-bottom:16px;color:var(--ink2);font-size:14px}
+details.help .hbody b{color:var(--ink)}
+details.help dl{margin:0;display:flex;flex-direction:column;gap:10px}
+details.help dt{font-weight:700;color:var(--ink)}
+details.help dd{margin:2px 0 0}
+details.help ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 .ver{font-size:12px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
 .sub{color:var(--ink2);font-size:13px}
 .muted{color:var(--muted)}
@@ -146,7 +157,7 @@ nav button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-spac
 <script>
 /* Version de l'appli (majeure.mineure.correctif), affichée « v1.10.0 ».
    Doit rester égale à CACHE_VERSION dans sw.js (vérifié par les tests). */
-const APP_VERSION='1.10.1';
+const APP_VERSION='1.11.0';
 const VERSION_LABEL='v'+APP_VERSION;
 
 /* ---------- utilitaires ---------- */
@@ -271,6 +282,7 @@ const ICONS={
  mois:'<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>',
  projection:'<svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg>',
  rentabilite:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9.5h5M9 14.5h5M8 12h6"/></svg>',
+ help:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8M12 17h.01"/></svg>',
  refresh:'<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>',
  simulation:'<svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
  donnees:'<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.500 3.500a2.100 2.100 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>'};
@@ -318,7 +330,7 @@ function preNote(pre){
 function vAccueil(){
   const ml=monthsList(),inst=installInfo();
   const head=`<div class="headrow"><div class="head"><h1>Suivi solaire</h1><p class="sub">${inst.kwc?fmt(inst.kwc,1)+' kWc':'Panneaux'}${inst.kwh?' · batterie '+fmt(inst.kwh,2)+' kWh':''}</p></div>
-    <div class="headtools"><span class="ver" aria-label="Version ${APP_VERSION}">${VERSION_LABEL}</span><button class="iconbtn" data-act="refresh" aria-label="Actualiser : synchroniser les données et mettre à jour l'appli" title="Synchroniser et mettre à jour">${ICONS.refresh}</button></div></div>`;
+    <div class="headtools"><span class="ver" aria-label="Version ${APP_VERSION}">${VERSION_LABEL}</span><button class="iconbtn" data-act="help" data-s="demarrer" aria-label="Aide" title="Aide">${ICONS.help}</button><button class="iconbtn" data-act="refresh" aria-label="Actualiser : synchroniser les données et mettre à jour l'appli" title="Synchroniser et mettre à jour">${ICONS.refresh}</button></div></div>`;
   if(!ml.length)return head+emptyState();
   const l=last12(ml),sum=k=>l.reduce((a,m)=>a+m[k],0);
   const prod=sum('prod'),usage=sum('usage'),conso=sum('conso'),reseau=sum('reseau');
@@ -367,7 +379,7 @@ function vAccueil(){
 
 function vMois(){
   const ml=monthsList();
-  let h=`<div class="head"><h1>Mois par mois</h1><p class="sub">Données de ton appli solaire, mois après mois.</p></div>`;
+  let h=`<div class="head"><h1>Mois par mois</h1><p class="sub">Données de ton appli solaire, mois après mois.</p><button class="linkbtn" data-act="help" data-s="mois">Comment lire cette page ?</button></div>`;
   if(!ml.length)return h+emptyState();
   const list=S.range===12?last12(ml):ml;
   h+=`<div class="row2"><div class="seg" role="group" aria-label="Période">
@@ -427,7 +439,7 @@ function projResults(){
   return h;
 }
 function vProjection(){
-  return `<div class="head"><h1>Projection</h1><p class="sub">20 ans d'estimation, avec l'usure des panneaux et de la batterie.</p></div>`+sliderBlock()+`<div id="results" style="display:flex;flex-direction:column;gap:16px;min-width:0">${projResults()}</div>`;
+  return `<div class="head"><h1>Projection</h1><p class="sub">20 ans d'estimation, avec l'usure des panneaux et de la batterie.</p><button class="linkbtn" data-act="help" data-s="projection">Comment lire cette page ?</button></div>`+sliderBlock()+`<div id="results" style="display:flex;flex-direction:column;gap:16px;min-width:0">${projResults()}</div>`;
 }
 
 function jours(c,p){
@@ -466,7 +478,7 @@ function roiResults(){
   return h;
 }
 function vRentab(){
-  return `<div class="head"><h1>Rentabilité</h1><p class="sub">Quand l'installation se rembourse, selon les hypothèses ci-dessous.</p></div>`+sliderBlock()+`<div id="results" style="display:flex;flex-direction:column;gap:16px;min-width:0">${roiResults()}</div>`;
+  return `<div class="head"><h1>Rentabilité</h1><p class="sub">Quand l'installation se rembourse, selon les hypothèses ci-dessous.</p><button class="linkbtn" data-act="help" data-s="rentabilite">Comment lire cette page ?</button></div>`+sliderBlock()+`<div id="results" style="display:flex;flex-direction:column;gap:16px;min-width:0">${roiResults()}</div>`;
 }
 
 /* ---------- simulation : ton installation comparée à une variante (en mémoire, rien n'est enregistré) ---------- */
@@ -542,7 +554,7 @@ function simResults(){
   return h;
 }
 function vSimulation(){
-  const head=`<div class="head"><h1>Simulation</h1><p class="sub">Compare ton installation à une variante, par exemple sans batterie.</p></div>`;
+  const head=`<div class="head"><h1>Simulation</h1><p class="sub">Compare ton installation à une variante, par exemple sans batterie.</p><button class="linkbtn" data-act="help" data-s="simulation">Comment lire cette page ?</button></div>`;
   if(!monthsList().length||!simList().length)return head+emptyState();
   return head+simControls()+sliderBlock()+`<div id="results" style="display:flex;flex-direction:column;gap:16px;min-width:0">${simResults()}</div>`;
 }
@@ -586,7 +598,7 @@ function setField(id,label,val,help,pct){
 }
 function vDonnees(){
   const c=cfg();
-  let h=`<div class="head"><h1>Données</h1><p class="sub">Saisie des mois, équipements et hypothèses du modèle.</p></div>`;
+  let h=`<div class="head"><h1>Données</h1><p class="sub">Saisie des mois, équipements et hypothèses du modèle.</p><button class="linkbtn" data-act="help" data-s="donnees">Comment lire cette page ?</button></div>`;
   h+=monthForm();
   h+=`<section class="card"><h2>Équipements</h2>${parcList().map(eqCard).join('')||'<p class="sub">Aucun équipement.</p>'}<button class="btn" data-act="addeq">Ajouter un équipement</button></section>`;
   h+=`<section class="card"><h2>Hypothèses du modèle</h2>
@@ -617,11 +629,20 @@ function vDonnees(){
   return h;
 }
 
+/* ---------- aide ---------- */
+const HELP=[["demarrer","Par où commencer ?","\n<p>Cette appli suit ton installation solaire : ce qu'elle produit, ce que tu consommes, ce que ça te fait économiser, et dans combien de temps elle sera remboursée.</p>\n<ul>\n<li><b>Accueil</b> : le résumé des 12 derniers mois.</li>\n<li><b>Mois</b> : l'historique mois par mois, en graphiques ou en tableau.</li>\n<li><b>Projection</b> : une estimation sur 20 ans (production, factures).</li>\n<li><b>Rentabilité</b> : quand l'installation se rembourse.</li>\n<li><b>Simulation</b> : comparer ton installation avec une variante, par exemple sans batterie.</li>\n<li><b>Données</b> : saisir un mois, gérer les équipements, régler les hypothèses, sauvegarder.</li>\n</ul>\n<p>Les chiffres de l'<b>Accueil</b> et de <b>Mois</b> viennent de ce que tu as saisi. Ceux de <b>Projection</b>, <b>Rentabilité</b> et <b>Simulation</b> sont des <b>estimations</b> : elles dépendent des hypothèses réglées dans Données.</p>"],["mots","Les mots à connaître","\n<dl>\n<dt>kWh (kilowattheure)</dt><dd>L'unité d'énergie, celle de ta facture d'électricité. Un four allumé une heure consomme environ 2 kWh.</dd>\n<dt>kWc (kilowatt-crête)</dt><dd>La puissance maximale des panneaux. Plus il y en a, plus l'installation produit.</dd>\n<dt>Production</dt><dd>Toute l'électricité produite par tes panneaux.</dd>\n<dt>Consommation</dt><dd>Toute l'électricité utilisée dans la maison, d'où qu'elle vienne.</dd>\n<dt>Réseau</dt><dd>L'électricité que tu achètes à ton fournisseur, celle qui apparaît sur ta facture.</dd>\n<dt>Usage perso</dt><dd>La part de ta production que tu as utilisée toi-même : directement, ou stockée dans la batterie puis utilisée plus tard.</dd>\n<dt>Solaire consommé</dt><dd>La consommation moins le réseau : ce que le soleil a réellement couvert chez toi.</dd>\n<dt>Surplus</dt><dd>La production que tu n'as pas utilisée. Elle part sur le réseau, et ne rapporte quelque chose que si tu as un contrat de rachat.</dd>\n<dt>Autoconsommation</dt><dd>Sur ce que tes panneaux produisent, quelle part tu utilises toi-même. <i>Question : « mon soleil est-il bien utilisé ? »</i> Calcul : usage perso ÷ production.</dd>\n<dt>Autosuffisance</dt><dd>Sur ce que tu consommes, quelle part vient du soleil. <i>Question : « de combien je me passe du réseau ? »</i> Calcul : 1 − réseau ÷ consommation.</dd>\n<dt>Batterie</dt><dd>Elle stocke le surplus de la journée pour l'utiliser le soir. Résultat : plus d'autoconsommation, donc moins d'électricité achetée.</dd>\n<dt>Usure</dt><dd>Les panneaux et la batterie perdent un peu de capacité chaque année. L'appli en tient compte dans les projections.</dd>\n</dl>\n<p><b>Exemple.</b> Tu produis 100 kWh, tu en utilises 40 sur place et tu consommes 120 kWh au total. Autoconsommation : 40 %. Solaire consommé : 40 kWh, donc réseau : 80 kWh, et autosuffisance : 33 %.</p>"],["accueil","Lire l'Accueil","\n<ul>\n<li><b>Autosuffisance, 12 derniers mois</b> : la part de ta consommation couverte par le solaire, avec les kWh correspondants.</li>\n<li><b>Production, Consommation, Autoconso.</b> : les trois totaux de la période.</li>\n<li><b>D'où vient ton électricité</b> : une barre par mois, <span class=\"sw\" style=\"background:var(--c-solar)\"></span>verte = solaire (direct ou batterie), <span class=\"sw\" style=\"background:var(--c-conso)\"></span>bleue = réseau. Plus il y a de vert, mieux c'est. La ligne pointillée « Batterie » marque sa mise en service.</li>\n<li><b>Coût net estimé</b> : ce que l'électricité te coûte sur la période, voir « Les coûts ».</li>\n<li><b>Investissement récupéré</b> : la barre de ce que le solaire t'a déjà fait économiser, par rapport à ce que l'installation a coûté.</li>\n<li><b>Dernier mois saisi</b> : le détail du mois le plus récent.</li>\n</ul>\n<p>Le bandeau jaune « Mois à saisir » apparaît quand un mois terminé n'est pas encore enregistré.</p>"],["mois","Lire la page Mois","\n<p>Choisis la période (12 mois ou tout) et l'affichage (graphiques ou tableau). Dans le tableau, touche une ligne pour corriger ce mois.</p>\n<ul>\n<li><b>Production et consommation</b> : <span class=\"sw\" style=\"background:var(--c-prod)\"></span>orange = ce que produisent les panneaux, <span class=\"sw\" style=\"background:var(--c-conso)\"></span>bleu = ce que tu consommes. La production monte l'été et baisse l'hiver, c'est normal.</li>\n<li><b>D'où vient ton électricité</b> : la même barre qu'à l'accueil, solaire en vert et réseau en bleu.</li>\n<li><b>Autoconsommation et autosuffisance</b> : deux courbes en pourcentage. Orange : la part de la production que tu utilises. Verte : la part de la consommation couverte par le solaire. Les points reflètent le mois : un été ensoleillé fait monter les deux.</li>\n<li><b>Coût net estimé</b> : l'estimation de ce que chaque mois te coûte (électricité achetée + abonnement).</li>\n</ul>\n<p>Pour comparer, regarde un mois et le même mois de l'année précédente : le voisin du mois est trompeur à cause des saisons.</p>"],["couts","Les coûts : comment c'est calculé","\n<p>Les coûts sont des <b>estimations</b>, pas ta facture exacte. Ils reposent sur trois réglages (Données → Hypothèses du modèle) :</p>\n<ul>\n<li><b>Prix moyen d'achat</b> (€/kWh) : le prix moyen payé pour l'électricité du réseau. Si ton tarif varie selon l'heure ou le jour, prends la moyenne.</li>\n<li><b>Abonnement</b> (€/mois) : la part fixe de ta facture, qu'il y ait du solaire ou non.</li>\n<li><b>Rachat du surplus</b> (€/kWh) : ce que tu touches pour l'électricité envoyée au réseau. 0 si tu n'as pas de contrat de rachat.</li>\n</ul>\n<dl>\n<dt>Coût net d'un mois</dt><dd>Électricité achetée au réseau × prix moyen, plus l'abonnement, moins le rachat éventuel.</dd>\n<dt>Économie du solaire</dt><dd>Chaque kWh solaire que tu consommes sur place est un kWh que tu n'achètes pas : il compte au prix moyen d'achat. Un kWh rapporte donc ce qu'il t'aurait coûté.</dd>\n<dt>Investissement</dt><dd>La somme des coûts des équipements saisis dans Données (pose comprise).</dd>\n</dl>"],["projection","Lire la Projection","\n<p>L'appli estime année par année ce que va produire l'installation et ce que tu paieras, sur 20 ans. Le point de départ de ta consommation est celle des 12 derniers mois saisis.</p>\n<p><b>Hypothèses à tester</b> (en haut) : trois curseurs pour voir l'effet d'un prix de l'électricité qui augmente, d'une consommation qui évolue ou d'un rachat du surplus. Rien n'est enregistré tant que tu ne touches pas « Enregistrer ces valeurs », et « Revenir aux valeurs enregistrées » remet tout comme avant.</p>\n<ul>\n<li><b>Production estimée et solaire consommé</b> : <span class=\"sw\" style=\"background:var(--c-prod)\"></span>la production prévue chaque année, <span class=\"sw\" style=\"background:var(--c-solar)\"></span>et la part que tu utiliseras sur place. Les barres baissent doucement avec l'usure.</li>\n<li><b>Facture annuelle estimée</b> : <span class=\"sw\" style=\"background:var(--c-conso)\"></span>ce que tu paierais sans solaire, <span class=\"sw\" style=\"background:var(--c-solar)\"></span>ce que tu paies avec ton installation. L'écart entre les deux courbes est ton gain de l'année.</li>\n<li><b>Année par année</b> : la capacité restante des panneaux et de la batterie, la production, la part autoconsommée, les kWh achetés au réseau et la facture. La ligne surlignée est l'année où l'installation est remboursée.</li>\n</ul>\n<p>La batterie fait monter l'autoconsommation jusqu'à un plafond. La première année d'un équipement ne compte que les jours écoulés depuis sa mise en service.</p>"],["rentabilite","Lire la Rentabilité","\n<ul>\n<li><b>Investissement</b> : le coût total, séparé entre panneaux et batteries.</li>\n<li><b>Retour, installation</b> : l'année où les économies cumulées dépassent le coût de tout ce qui est installé.</li>\n<li><b>Retour, batterie seule</b> : la même chose pour la batterie seule. Elle ne compte que le gain en plus qu'elle apporte par rapport à des panneaux sans batterie.</li>\n<li><b>Économie sur 20 ans</b> : le total économisé sur la durée de la projection.</li>\n</ul>\n<p>Les deux graphiques montrent l'<span class=\"sw\" style=\"background:var(--c-solar)\"></span>économie cumulée qui monte année après année, face à une <span class=\"sw\" style=\"background:var(--c-conso)\"></span>ligne pointillée qui est le coût de l'équipement. <b>Le point où la courbe croise la ligne est l'année du retour sur investissement.</b></p>\n<p><b>Mesuré à ce jour</b> : l'économie réellement observée depuis la mise en service, calculée avec tes mois saisis. Si une partie de la production date d'avant la mesure de la consommation, elle est comptée avec une estimation prudente, et c'est indiqué.</p>\n<p>Le bandeau gris signale une batterie prévue dans le futur : elle est incluse dans le calcul. Modifie ou retire-la dans Données.</p>"],["simulation","Lire la Simulation","\n<p>Tu compares ton installation (la courbe verte) à une <b>variante</b> (la courbe orange). Par défaut, la variante est « sans batterie ».</p>\n<ul>\n<li><b>Variante à comparer</b> : coche les équipements à garder. « Sans batterie » et « Tout inclus » sont des raccourcis. « Ajouter un équipement fictif » teste un achat qui n'existe pas encore (par exemple une batterie plus tard ou des panneaux en plus).</li>\n<li><b>Écart sur 20 ans</b> : le chiffre principal. Il dit lequel des deux coûte le moins cher au total, et de combien. La phrase dessous explique en quelle année le surcoût est remboursé.</li>\n<li><b>Coût total cumulé</b> : équipements (comptés quand ils sont installés) plus factures d'électricité. Le point où les deux courbes se croisent est le moment où l'équipement en plus devient rentable.</li>\n<li><b>Facture annuelle</b> : la facture de chaque année, pour les deux cas, avec le « sans solaire » en pointillé.</li>\n</ul>\n<p>Rien n'est enregistré : tes données ne changent pas. Les curseurs d'hypothèses sont les mêmes que dans Projection.</p>"],["tempo","Jours rouges Tempo","\n<p>Avec le tarif Tempo, l'électricité coûte beaucoup plus cher certains jours (les jours rouges) aux heures pleines. L'encadré de la page Rentabilité estime ce que rapporterait de garder la batterie pour ces soirées-là.</p>\n<ul>\n<li><b>Avec le surplus solaire</b> : la batterie est chargée gratuitement par le soleil, mais cela dépend de la météo.</li>\n<li><b>Avec une recharge forcée la veille</b> : la batterie est remplie la nuit au tarif creux. C'est garanti, avec une perte de rendement de 10 %.</li>\n</ul>\n<p>Ce gain s'ajoute à la rentabilité calculée ailleurs. Il n'apparaît que si les kWh de ta facture Tempo ont été saisis, et les tarifs sont ceux d'une date précise, à mettre à jour quand ils changent.</p>"],["donnees","Saisir et régler : la page Données","\n<p><b>Ajouter un mois.</b> Recopie les quatre chiffres affichés par ton appli solaire pour ce mois :</p>\n<ul>\n<li><b>Production</b> : l'énergie produite.</li>\n<li><b>Usage perso</b> : la consommation directe plus l'énergie stockée dans la batterie.</li>\n<li><b>Consommation</b> : tout ce que la maison a consommé.</li>\n<li><b>Du réseau</b> : l'énergie achetée au réseau.</li>\n</ul>\n<p>L'appli vérifie la cohérence et te signale un écart suspect.</p>\n<p><b>Équipements.</b> Chaque équipement a un type (Panneaux ou Batterie), une date de mise en service, une capacité, un pourcentage d'usure par an et un coût. Le type « Exemple (inactif) » met un équipement de côté sans le supprimer.</p>\n<p><b>Hypothèses du modèle</b> (elles pilotent toutes les estimations) :</p>\n<dl>\n<dt>Production par kWc et par an</dt><dd>Combien produit un kWc chez toi en un an. « Recaler sur mes 12 derniers mois » le calcule à partir de tes vraies données.</dd>\n<dt>Autoconso sans batterie</dt><dd>La part de la production que tu utilises même sans batterie.</dd>\n<dt>Bonus par kWh de batterie</dt><dd>Combien de points d'autoconsommation chaque kWh de batterie apporte.</dd>\n<dt>Plafond d'autoconso</dt><dd>La limite : même avec une très grosse batterie, tu n'utiliseras jamais 100 %.</dd>\n<dt>Première année</dt><dd>L'année où commence la projection.</dd>\n<dt>Évolution du prix et de la conso</dt><dd>De combien l'électricité et ta consommation augmentent chaque année (0 = stable).</dd>\n</dl>"],["sync","Sauvegarde, synchronisation et mise à jour","\n<ul>\n<li><b>Hors ligne</b> : l'appli marche sans réseau. Ce que tu saisis est gardé sur l'appareil.</li>\n<li><b>Synchronisation</b> : une fois connecté (Données → Synchronisation), tes données se retrouvent sur tous tes appareils. Une saisie faite hors ligne part au retour du réseau, avec la mention « modification en attente ».</li>\n<li><b>Sauvegarde</b> : « Exporter une sauvegarde » crée un fichier avec toutes tes données. « Importer » le remet, ou ajoute des mois, selon le fichier. Garde une sauvegarde de temps en temps.</li>\n<li><b>Le bouton ↻</b> en haut de l'accueil synchronise tes données puis installe la dernière version de l'appli. Le numéro de version est affiché juste à côté.</li>\n</ul>"],["limites","Ce que l'appli ne sait pas faire","\n<ul>\n<li>Elle ne remplace pas ta facture : les coûts sont calculés avec un prix moyen.</li>\n<li>Les projections supposent un fonctionnement régulier : pas d'aléa météo, de panne ni de changement d'habitudes, sauf ceux que tu règles toi-même.</li>\n<li>Elle ne lit pas ton appli solaire toute seule : les mois se saisissent à la main ou par fichier.</li>\n<li>Un résultat à deux chiffres après la virgule ne veut pas dire précision : lis-le comme un ordre de grandeur.</li>\n</ul>"]];
+function vAide(){
+  const open=S.helpOpen||'';
+  return `<div class="headrow"><div class="head"><h1>Aide</h1><p class="sub">Comment lire les écrans et d'où viennent les chiffres.</p></div>
+    <button class="btn small" data-act="helpback">Retour</button></div>
+    <section class="card">${HELP.map(s=>`<details class="help" id="h-${s[0]}"${s[0]===open?' open':''}><summary>${s[1]}</summary><div class="hbody">${s[2]}</div></details>`).join('')}</section>`;
+}
+
 /* ---------- rendu ---------- */
 function render(){
   const app=document.getElementById('app');
   pending=[];
-  const f={accueil:vAccueil,mois:vMois,projection:vProjection,rentabilite:vRentab,simulation:vSimulation,donnees:vDonnees}[S.tab]||vAccueil;
+  const f={accueil:vAccueil,mois:vMois,projection:vProjection,rentabilite:vRentab,simulation:vSimulation,donnees:vDonnees,aide:vAide}[S.tab]||vAccueil;
   const ready=S.loaded.months&&S.loaded.parc&&S.loaded.settings;
   app.innerHTML=(!ready&&!S.err)?`<div class="head"><h1>Suivi solaire</h1><p class="sub">Chargement de tes données…</p></div>`:f();
   document.getElementById('nav').innerHTML=TABS.map(t=>`<button data-act="tab" data-tab="${t[0]}" ${S.tab===t[0]?'aria-current="page"':''}>${ICONS[t[0]]}<span>${t[1]}</span></button>`).join('');
@@ -723,6 +744,8 @@ document.addEventListener('click',async ev=>{
   const b=ev.target.closest('[data-act]');if(!b||b.tagName==='SELECT'||b.type==='range')return;
   const a=b.dataset.act;
   if(a==='tab'){S.tab=b.dataset.tab;try{localStorage.setItem('ss-tab',S.tab)}catch(e){}window.scrollTo(0,0);render()}
+  else if(a==='help'){if(S.tab!=='aide')S.prevTab=S.tab;S.tab='aide';S.helpOpen=b.dataset.s||'';render();const t=document.getElementById('h-'+S.helpOpen);if(t)t.scrollIntoView();else window.scrollTo(0,0)}
+  else if(a==='helpback'){S.tab=S.prevTab||'accueil';window.scrollTo(0,0);render()}
   else if(a==='range'){S.range=+b.dataset.v;render()}
   else if(a==='mview'){S.mview=b.dataset.v;render()}
   else if(a==='edit'){S.edit=b.dataset.key;S.tab='donnees';window.scrollTo(0,0);render()}
