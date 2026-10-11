@@ -1,7 +1,7 @@
 /* Service worker : cache-first.
    Après toute modification d'un fichier de l'appli, incrémenter CACHE_VERSION
    pour que les téléphones récupèrent la nouvelle version, et APP_VERSION dans index.html. */
-const CACHE_VERSION='v9';
+const CACHE_VERSION='1.10.0';
 const CACHE='suivi-solaire-'+CACHE_VERSION;
 const FONT_CACHE='suivi-solaire-fonts';
 const ASSETS=['./','index.html','store.js','sync.js','model.js','seed.json','manifest.webmanifest',

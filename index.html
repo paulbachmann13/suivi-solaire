@@ -144,8 +144,10 @@ nav button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-spac
 <input type="file" id="imp-file" hidden>
 
 <script>
-/* Version affichée dans l'appli : doit rester égale à CACHE_VERSION dans sw.js (vérifié par les tests). */
-const APP_VERSION='v9';
+/* Version de l'appli (majeure.mineure.correctif), affichée « v1.10.0 ».
+   Doit rester égale à CACHE_VERSION dans sw.js (vérifié par les tests). */
+const APP_VERSION='1.10.0';
+const VERSION_LABEL='v'+APP_VERSION;
 
 /* ---------- utilitaires ---------- */
 const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -316,7 +318,7 @@ function preNote(pre){
 function vAccueil(){
   const ml=monthsList(),inst=installInfo();
   const head=`<div class="headrow"><div class="head"><h1>Suivi solaire</h1><p class="sub">${inst.kwc?fmt(inst.kwc,1)+' kWc':'Panneaux'}${inst.kwh?' · batterie '+fmt(inst.kwh,2)+' kWh':''}</p></div>
-    <div class="headtools"><span class="ver" aria-label="Version ${APP_VERSION}">${APP_VERSION}</span><button class="iconbtn" data-act="refresh" aria-label="Actualiser l'appli" title="Actualiser l'appli">${ICONS.refresh}</button></div></div>`;
+    <div class="headtools"><span class="ver" aria-label="Version ${APP_VERSION}">${VERSION_LABEL}</span><button class="iconbtn" data-act="refresh" aria-label="Actualiser : synchroniser les données et mettre à jour l'appli" title="Synchroniser et mettre à jour">${ICONS.refresh}</button></div></div>`;
   if(!ml.length)return head+emptyState();
   const l=last12(ml),sum=k=>l.reduce((a,m)=>a+m[k],0);
   const prod=sum('prod'),usage=sum('usage'),conso=sum('conso'),reseau=sum('reseau');
@@ -608,9 +610,9 @@ function vDonnees(){
     <button class="btn" data-act="import">Importer une sauvegarde</button></div>
     <p class="sub">Une sauvegarde complète remplace toutes les données actuelles. Un fichier d'ajout de mois ajoute seulement ses mois, sans rien effacer.</p></section>`;
   h+=`<section class="card"><h3>À propos</h3>
-    <div class="headrow"><div><span class="label">Version</span><div class="mid">${APP_VERSION}</div></div>
-    <button class="btn small" data-act="refresh">Actualiser l'appli</button></div>
-    <p class="sub">« Actualiser » cherche une nouvelle version et recharge l'appli. Tes données ne bougent pas.</p>
+    <div class="headrow"><div><span class="label">Version</span><div class="mid">${VERSION_LABEL}</div></div>
+    <button class="btn small" data-act="refresh">Actualiser</button></div>
+    <p class="sub">« Actualiser » (ou ↻ sur l'accueil) synchronise d'abord tes données avec Supabase, puis installe la dernière version de l'appli publiée sur GitHub et la recharge.</p>
     <p class="sub">Tes chiffres ne sont pas publiés avec l'appli : ils arrivent par un fichier de sauvegarde ou un fichier d'ajout de mois (bouton « Importer »). Tout ce que tu saisis ici est enregistré sur ce téléphone.</p></section>`;
   return h;
 }
@@ -874,9 +876,16 @@ boot();
    La nouvelle version attend dans le service worker ; un bandeau propose de l'activer. */
 let swReg=null,swReload=false;
 /* Actualiser : cherche une nouvelle version, l'active s'il y en a une, sinon recharge simplement la page. */
+/* ↻ : 1. synchronise les données (Supabase), 2. installe la dernière version de l'appli (GitHub Pages). */
 async function refreshApp(btn){
   if(btn)btn.disabled=true;
-  try{sessionStorage.setItem('ss-refreshed','1')}catch(e){}
+  let sync='';
+  if(S.user&&db){
+    toast('Synchronisation des données…');
+    await db.sync();
+    sync=db.syncStatus().state==='ok'?'ok':'err';
+  }
+  try{sessionStorage.setItem('ss-refreshed',sync||'1')}catch(e){}
   if(!swReg){location.reload();return}
   toast('Recherche d\'une mise à jour…');
   try{await swReg.update()}catch(e){}
@@ -888,7 +897,14 @@ async function refreshApp(btn){
   if(swReg.waiting&&navigator.serviceWorker.controller){swReload=true;swReg.waiting.postMessage('skipWaiting');return}
   location.reload();
 }
-try{if(sessionStorage.getItem('ss-refreshed')){sessionStorage.removeItem('ss-refreshed');setTimeout(()=>toast('Appli à jour, version '+APP_VERSION),400)}}catch(e){}
+try{
+  const r=sessionStorage.getItem('ss-refreshed');
+  if(r){
+    sessionStorage.removeItem('ss-refreshed');
+    const txt='Appli à jour ('+VERSION_LABEL+')'+(r==='ok'?' · données synchronisées':r==='err'?' · synchro impossible, nouvel essai plus tard':'');
+    setTimeout(()=>toast(txt),400);
+  }
+}catch(e){}
 function showUpdate(){
   if(document.getElementById('upd'))return;
   const d=document.createElement('div');d.id='upd';d.setAttribute('role','status');
